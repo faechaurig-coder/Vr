@@ -32,6 +32,22 @@
   .card h2 { color: #ffb347; font-size: 1.2em; margin-bottom: 12px; }
   .card ol { text-align: left; padding-left: 22px; line-height: 1.9; color: #d8e0ee; }
   .hint { margin-top: 18px; color: #8fa3c8; font-size: 0.85em; }
+  #why {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.72); padding: 8px 16px; border-radius: 18px;
+    font-size: 13px; z-index: 300; border: 1px solid rgba(255,179,71,0.35);
+    max-width: 90vw; display: none;
+  }
+  #hud {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 8px; z-index: 260;
+  }
+  .hbtn {
+    background: rgba(20,20,40,0.85); border: 1px solid rgba(255,179,71,0.45);
+    color: #ffd9b3; padding: 10px 14px; border-radius: 14px; cursor: pointer;
+    font-size: 13px;
+  }
+  .hbtn.active { border-color: #ffb347; background: rgba(255,179,71,0.22); }
   #ARButton {
     position: fixed !important;
     bottom: 30px !important;
@@ -51,19 +67,26 @@
 </head>
 <body>
   <h1><span class="emoji">🐱</span> Gatito AR</h1>
-  <p>Tu gatito virtual en realidad aumentada</p>
+  <p>Tu gatito virtual en realidad aumentada — con cerebro de mosca</p>
 
   <div class="card">
     <h2>📋 Instrucciones</h2>
     <ol>
       <li>Pulsa el botón <b>"Entrar en AR"</b> abajo</li>
       <li>Acepta los permisos que pida el navegador</li>
-      <li>Apunta con el controlador (o tu mano) al <b>suelo o una superficie</b></li>
-      <li>Toca / aprieta el gatillo donde quieras que aparezca el gatito</li>
-      <li>El gatito caminará por tu sala 🐾 — toca otro lugar para moverlo</li>
+      <li>Apunta al <b>suelo</b> y aprieta el gatillo para colocar al gatito</li>
+      <li>Toca otro punto del suelo para dejar <b>olor a fermentación</b> — lo sigue por tropotaxis antenal</li>
+      <li>Acércate de golpe: looming visual → escape (modelo LC4→GF)</li>
     </ol>
   </div>
-  <p class="hint">Requiere Meta Quest Browser con WebXR activado</p>
+  <p class="hint">No es un conectoma. Es MotorIntent de MOSCA: senseAt es la única puerta sensorial.</p>
+
+  <div id="why">esperando colocación…</div>
+  <div id="hud">
+    <button class="hbtn active" id="btnFerm" type="button">🍎 Fermentación</button>
+    <button class="hbtn" id="btnGeo" type="button">🍄 Geosmina</button>
+    <button class="hbtn" id="btnAntL" type="button">🔇 Antena L</button>
+  </div>
 
 <script type="importmap">
 {
@@ -77,6 +100,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
+import { createFlyRoom } from './lib/fly-brain.js';
 
 // ---------- Escena base ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -265,38 +289,89 @@ let hitTestSource = null;
 let hitTestSourceRequested = false;
 const clock = new THREE.Clock();
 
-// Estado del gatito: comportamiento de paseo
+// Estado del gatito: MotorIntent de MOSCA sobre el suelo AR
+const flyRoom = createFlyRoom({ seed: 11, cellMeters: 0.15, locomotorScale: 0.22 });
 const catState = {
   home: new THREE.Vector3(),
-  target: new THREE.Vector3(),
   heading: 0,
-  mode: 'idle',       // idle | walk | sit
-  timer: 2,
   popScale: 0,
-  meowTimer: 6 + Math.random() * 8
+  meowTimer: 6 + Math.random() * 8,
+  dropChannel: 'ferm'
 };
+const odorMarks = [];
+const whyEl = document.getElementById('why');
+const hudEl = document.getElementById('hud');
+
+function setWhy(text) {
+  if (!whyEl) return;
+  whyEl.textContent = text;
+}
+
+function makeOdorMark(channel, pos) {
+  const color = channel === 'geosmin' ? 0x6bff9d : channel === 'bitter' ? 0xc44dff : 0xffb347;
+  const m = new THREE.Mesh(
+    new THREE.CircleGeometry(0.08, 20).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
+  );
+  m.position.copy(pos);
+  m.position.y += 0.004;
+  m.userData.channel = channel;
+  scene.add(m);
+  odorMarks.push(m);
+  return m;
+}
 
 function placeKitten(mat) {
   const pos = new THREE.Vector3().setFromMatrixPosition(mat);
   kitten.position.copy(pos);
   shadow.position.copy(pos).y += 0.002;
   catState.home.copy(pos);
-  catState.target.copy(pos);
   kitten.visible = true;
   shadow.visible = true;
   catState.popScale = 0;
-  catState.mode = 'idle';
-  catState.timer = 1.2;
+  flyRoom.bindOrigin(pos.x, pos.z, catState.heading);
+  if (whyEl) whyEl.style.display = 'block';
+  if (hudEl) hudEl.style.display = 'flex';
+  setWhy('exploración / ruido de rumbo');
   meow();
+}
+
+function dropAtReticle() {
+  const pos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+  flyRoom.drop(catState.dropChannel, pos.x, pos.z);
+  makeOdorMark(catState.dropChannel, pos);
+  setWhy(catState.dropChannel === 'geosmin'
+    ? 'geosmina en el suelo — OR56a debería alejar'
+    : 'fermentación en el suelo — tropotaxis antenal');
 }
 
 const controller = renderer.xr.getController(0);
 controller.addEventListener('select', () => {
-  if (reticle.visible) {
-    placeKitten(reticle.matrix);
-  }
+  if (!reticle.visible) return;
+  if (!kitten.visible) placeKitten(reticle.matrix);
+  else dropAtReticle();
 });
 scene.add(controller);
+
+document.getElementById('btnFerm').onclick = () => {
+  catState.dropChannel = 'ferm';
+  document.getElementById('btnFerm').classList.add('active');
+  document.getElementById('btnGeo').classList.remove('active');
+};
+document.getElementById('btnGeo').onclick = () => {
+  catState.dropChannel = 'geosmin';
+  document.getElementById('btnGeo').classList.add('active');
+  document.getElementById('btnFerm').classList.remove('active');
+};
+document.getElementById('btnAntL').onclick = () => {
+  const on = flyRoom.occludeAntenna('L');
+  const btn = document.getElementById('btnAntL');
+  btn.classList.toggle('active', !on);
+  btn.textContent = on ? '🔇 Antena L' : '❌ Antena L oculta';
+  setWhy(on
+    ? 'antena izquierda restaurada — tropotaxis espacial otra vez'
+    : 'antena L oculta: olfato L es palpo residual 12%, no espacial');
+};
 
 // ---------- Bucle principal ----------
 renderer.setAnimationLoop((timestamp, frame) => {
@@ -346,49 +421,34 @@ renderer.setAnimationLoop((timestamp, frame) => {
       kitten.scale.setScalar(Math.max(0.01, s));
     }
 
-    // Máquina de estados sencilla
-    catState.timer -= dt;
-    if (catState.mode === 'idle') {
-      if (catState.timer <= 0) {
-        // Elegir un destino cercano a su "hogar"
-        const a = Math.random() * Math.PI * 2;
-        const r = 0.3 + Math.random() * 0.7;
-        catState.target.set(
-          catState.home.x + Math.cos(a) * r,
-          catState.home.y,
-          catState.home.z + Math.sin(a) * r
-        );
-        catState.mode = 'walk';
-      }
-    } else if (catState.mode === 'walk') {
-      const toTarget = new THREE.Vector3().subVectors(catState.target, kitten.position);
-      toTarget.y = 0;
-      const dist = toTarget.length();
-      if (dist < 0.04) {
-        catState.mode = Math.random() < 0.3 ? 'sit' : 'idle';
-        catState.timer = catState.mode === 'sit' ? 4 + Math.random() * 3 : 1.5 + Math.random() * 3;
-      } else {
-        toTarget.normalize();
-        const desired = Math.atan2(toTarget.x, toTarget.z);
-        let diff = desired - catState.heading;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        catState.heading += THREE.MathUtils.clamp(diff, -3 * dt, 3 * dt);
-        kitten.rotation.y = catState.heading;
-        const speed = 0.18;
-        kitten.position.x += Math.sin(catState.heading) * speed * dt;
-        kitten.position.z += Math.cos(catState.heading) * speed * dt;
-      }
-    } else if (catState.mode === 'sit') {
-      if (catState.timer <= 0) {
-        catState.mode = 'idle';
-        catState.timer = 1;
-      }
+    renderer.xr.updateCamera(camera);
+    camera.updateMatrixWorld(true);
+
+    // Looming: cámara o mando demasiado cerca (visión, no olfato)
+    const camPos = new THREE.Vector3();
+    camera.getWorldPosition(camPos);
+    const ctrlPos = new THREE.Vector3();
+    controller.getWorldPosition(ctrlPos);
+    const dCam = Math.hypot(camPos.x - kitten.position.x, camPos.z - kitten.position.z);
+    const dCtrl = Math.hypot(ctrlPos.x - kitten.position.x, ctrlPos.z - kitten.position.z);
+    if (dCam < 0.42) flyRoom.setLiveLoom(camPos.x, camPos.z, 1);
+    else if (dCtrl < 0.38) flyRoom.setLiveLoom(ctrlPos.x, ctrlPos.z, 1);
+    else flyRoom.clearLoom();
+
+    const pose = flyRoom.step(dt);
+    kitten.position.x = pose.arX;
+    kitten.position.z = pose.arZ;
+    catState.heading = pose.threeHeading;
+    kitten.rotation.y = catState.heading;
+    setWhy(pose.action + ' — ' + pose.why);
+
+    for (const m of odorMarks) {
+      m.material.opacity = 0.2 + 0.35 * Math.abs(Math.sin(t * 2.2));
     }
 
     // Poses y ciclos
-    const walking = catState.mode === 'walk';
-    const sitting = catState.mode === 'sit';
+    const walking = pose.walk > 0.4 && !pose.feed;
+    const sitting = pose.feed;
     const legSwing = walking ? Math.sin(t * 12) * 0.6 : 0;
     ud.legs[0].rotation.x = legSwing;
     ud.legs[1].rotation.x = -legSwing;
@@ -406,8 +466,9 @@ renderer.setAnimationLoop((timestamp, frame) => {
     ud.head.rotation.x = Math.sin(t * 1.1) * 0.08 + (sitting ? -0.15 : 0);
     ud.head.position.y += ((sitting ? 0.185 : 0.21) - ud.head.position.y) * Math.min(1, dt * 8);
 
-    // Orejas con pequeños tics
-    ud.ears[0].rotation.x = Math.sin(t * 3.1) * 0.06;
+    // Orejas: tics; antena L oculta aplasta la oreja izquierda
+    const antL = flyRoom.antennaOn('L');
+    ud.ears[0].rotation.x = antL ? Math.sin(t * 3.1) * 0.06 : 0.55;
     ud.ears[1].rotation.x = Math.sin(t * 2.7 + 1) * 0.06;
 
     // Cola ondulante

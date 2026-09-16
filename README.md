@@ -1,41 +1,47 @@
-# VR — Experiencias de Realidad Aumentada
+# Vr — Experiencias de Realidad Aumentada
 
-Experiencias WebXR para Meta Quest. Se abren directamente en el navegador, sin instalar nada.
+Experiencias WebXR para Meta Quest. Se abren en el navegador, sin instalar nada.
+
+Repo: https://github.com/faechaurig-coder/Vr
 
 ## Experiencias
 
 | Archivo | Descripción |
 |---|---|
-| `index.html` | Gatito AR — mascota virtual interactiva |
-| `companion2.html` | Luna — acompañante AR con voz, animaciones y estudio de apariencia |
+| `index.html` | Gatito AR con cerebro motor de mosca (MOSCA) |
+| `companion2.html` | Luna y avatares Mixamo — misma puerta sensorial `senseAt` |
 | `companion.html` | Versión anterior del acompañante |
 | `woman-ar.html` | Prueba inicial de personaje femenino en AR |
 
-## Clonar el repositorio
+## Cerebro de mosca
+
+No es un conectoma. El movimiento lo decide `MotorIntent` (`lib/fly-brain.js`), copiado de MOSCA:
+
+- **Única puerta sensorial:** `senseAt` (antenas L/R, palpos residuales 12% no espaciales).
+- **Tropotaxis:** más fermentación en una antena → gira hacia ese lado.
+- **Geosmina (OR56a):** evita. No es “olor feo” genérico.
+- **Looming (LC4→GF):** acercarte de golpe dispara escape. Johnston no huele.
+- **Antena L oculta:** el lado izquierdo deja de ser espacial; queda el palpo.
+
+En el gato y en Luna: primer gatillo coloca; los siguientes dejan olor en el suelo. **Ven** en Luna es una excepción social (línea recta) y luego vuelve el cerebro.
+
+## Clonar
 
 ```bash
-git clone https://work-1-tiasyprqzjhyessz.prod-runtime.all-hands.dev/VR.git
-```
-
-Para subirlo a tu propio GitHub:
-
-```bash
-cd VR
-git remote remove origin
-git remote add origin https://github.com/TU-USUARIO/VR.git
-git push -u origin master
+git clone https://github.com/faechaurig-coder/Vr.git
 ```
 
 ## Cómo usarlo
 
-1. Abre la URL en el navegador de tu Meta Quest.
+1. Abre la URL HTTPS en el navegador de tu Meta Quest (GitHub Pages o un host estático).
 2. Pulsa **Entrar en AR**.
 3. Apunta al suelo hasta ver el anillo y pulsa el gatillo para colocar al personaje.
+4. Toca otro punto para dejar fermentación o geosmina.
 
 ### Controles en Quest
 
-- **Gatillo** — colocar el personaje / caminar hasta un punto
-- **Botón B** (mando derecho) — abrir y cerrar el menú Studio
+- **Gatillo** — colocar / dejar olor
+- **Botón B** (mando derecho) — abrir y cerrar el menú Studio (Luna)
 - **Joystick derecho** — desplazarse por el menú
 
 ## Funciones principales
@@ -46,10 +52,11 @@ git push -u origin master
 - Animaciones: caminar, bailar, saludar, sentarse, saltar
 - Studio: cambio de personaje, tono de piel, cabello, accesorios y escala
 - Modo pose con IK para manipular brazos, piernas y cabeza
+- Mundo químico local (fermentación / geosmina / CO₂) sobre el suelo AR
 
 ## Configuración
 
-La clave de Gemini no está incluida en el repositorio. Crea un archivo `config.js` en la raíz:
+La clave de Gemini no está incluida. Crea `config.js` en la raíz:
 
 ```js
 window.APP_CONFIG = {
@@ -57,13 +64,14 @@ window.APP_CONFIG = {
 };
 ```
 
-Sin clave, la aplicación usa respuestas locales en lugar de la IA. `config.js` está en `.gitignore`.
+Sin clave, Luna usa respuestas locales. `config.js` está en `.gitignore`.
 
 ## Estructura
 
 ```
-├── companion2.html      # aplicación principal
+├── companion2.html      # Luna + avatares
 ├── index.html           # gatito AR
+├── lib/fly-brain.js     # MotorIntent MOSCA
 ├── lib/                 # three.js, GLTFLoader, DRACOLoader, ARButton
 ├── *-opt.glb            # modelos optimizados
 └── config.js            # clave de API (no incluida)
@@ -72,8 +80,6 @@ Sin clave, la aplicación usa respuestas locales en lugar de la IA. `config.js` 
 ## Notas técnicas
 
 - Los modelos FBX se convierten a GLB y se optimizan con glTF-Transform.
-- Las animaciones de Mixamo se aplican por retarget en el navegador: se renombran
-  las pistas del clip al prefijo del hueso del modelo destino.
+- Las animaciones de Mixamo se aplican por retarget en el navegador.
 - GLTFLoader elimina los dos puntos de los nombres de huesos
-  (`mixamorig:Hips` pasa a ser `mixamorigHips`), así que todo el código
-  trabaja con nombres sin dos puntos.
+  (`mixamorig:Hips` pasa a ser `mixamorigHips`).

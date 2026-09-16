@@ -39,8 +39,10 @@
   /* Barra de controles (visible dentro de AR como overlay) */
   #hud {
     position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
-    display:flex; gap:10px; z-index:260;
+    display:flex; gap:8px; z-index:260; flex-wrap:wrap; justify-content:center;
+    max-width:92vw;
   }
+  .hbtn.active { border-color:#6bff9d; color:#6bff9d; }
   .hbtn {
     background:rgba(20,20,40,0.85); border:1px solid rgba(255,157,226,0.5);
     color:#ffb8e3; padding:12px 18px; border-radius:14px; cursor:pointer;
@@ -81,15 +83,15 @@
 </head>
 <body>
   <h1>✨ Luna — Acompañante AR</h1>
-  <p class="subtitle">Personaje 3D real que camina, te mira y habla contigo</p>
+  <p class="subtitle">Personaje 3D con cerebro motor de mosca: olfato, tropotaxis, escape</p>
 
   <div class="card">
     <h2>🎮 Controles</h2>
     <ol>
       <li><b>Colocar:</b> apunta al suelo, espera el anillo rosa, aprieta el gatillo</li>
-      <li><b>Caminar hasta un punto:</b> toca otro lugar del suelo y caminará hasta ahí 🚶</li>
-      <li><b>Hablar:</b> pulsa 🎤 Hablar y dile cómo te sientes</li>
-      <li><b>Comandos:</b> "ven", "baila", "hola", "estoy triste", "siéntate"</li>
+      <li><b>Olor:</b> toca otro punto del suelo para dejar fermentación o geosmina. Camina por tropotaxis, no en línea recta</li>
+      <li><b>Ven:</b> excepción social — camina hasta ti, luego vuelve el cerebro</li>
+      <li><b>Hablar:</b> "ven", "baila", "huele", "geosmina", "antena"</li>
       <li><b>Studio 🎨:</b> cambia de personaje, piel, cabello y ropa</li>
     </ol>
   </div>
@@ -99,6 +101,9 @@
   <div id="hud">
     <button class="hbtn" id="btnMic">🎤 Hablar</button>
     <button class="hbtn" id="btnCome">📣 Ven</button>
+    <button class="hbtn active" id="btnFerm">🍎 Olor</button>
+    <button class="hbtn" id="btnGeo">🍄 Geosmina</button>
+    <button class="hbtn" id="btnAntL">🔇 Antena L</button>
     <button class="hbtn" id="btnPose">🧍 Pose</button>
     <button class="hbtn" id="btnStudio">🎨 Studio</button>
   </div>
@@ -185,6 +190,7 @@ import * as THREE from 'three';
 import { ARButton } from './lib/webxr/ARButton.js';
 import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
+import { createFlyRoom } from './lib/fly-brain.js';
 
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
@@ -237,13 +243,17 @@ const state = {
   skinColor: 0xf1c27d,
   hairColor: 0x3b2314,
   gesture: null, gestureT: 0,
-  mode: 'idle',          // idle | walkTo | pose
+  mode: 'idle',          // idle | walkTo | pose | brain
   walkTarget: new THREE.Vector3(),
   speaking: false, listening: false,
   skinTone: 0xf1c27d,
   poseMode: false,
-  grabbedChain: null     // cadena de huesos actualmente agarrada
+  grabbedChain: null,    // cadena de huesos actualmente agarrada
+  dropChannel: 'ferm'
 };
+
+const flyRoom = createFlyRoom({ seed: 17, cellMeters: 0.15, locomotorScale: 0.48 });
+const odorMarks = [];
 
 // ============ THREE SETUP ============
 const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
@@ -324,6 +334,27 @@ function pollXRMenuButton() {
 }
 document.getElementById('btnMic').onclick = (e) => { e.stopPropagation(); startListening(); };
 document.getElementById('btnCome').onclick = () => comeToMe();
+document.getElementById('btnFerm').onclick = () => {
+  state.dropChannel = 'ferm';
+  document.getElementById('btnFerm').classList.add('active');
+  document.getElementById('btnGeo').classList.remove('active');
+  setStatus('Próximo toque: fermentación (atracción antenal)');
+};
+document.getElementById('btnGeo').onclick = () => {
+  state.dropChannel = 'geosmin';
+  document.getElementById('btnGeo').classList.add('active');
+  document.getElementById('btnFerm').classList.remove('active');
+  setStatus('Próximo toque: geosmina (evitación OR56a)');
+};
+document.getElementById('btnAntL').onclick = () => {
+  const on = flyRoom.occludeAntenna('L');
+  const btn = document.getElementById('btnAntL');
+  btn.classList.toggle('active', !on);
+  btn.textContent = on ? '🔇 Antena L' : '❌ Antena L oculta';
+  setStatus(on
+    ? 'Antena izquierda restaurada'
+    : 'Antena L oculta: olfato L es palpo residual 12%, no espacial', 5000);
+};
 
 // ============ AR BUTTON ============
 const arButton = ARButton.createButton(renderer, {
@@ -865,6 +896,25 @@ async function handleUserSpeech(text) {
   const t = text.toLowerCase();
   // Comandos de acción directos
   if (/ven|acércate|acercate|venir/.test(t)) { comeToMe(); speak('Ahí voy.'); return; }
+  if (/geosmin|hongo|malo|evita/.test(t)) {
+    state.dropChannel = 'geosmin';
+    document.getElementById('btnGeo').classList.add('active');
+    document.getElementById('btnFerm').classList.remove('active');
+    speak('Geosmina. Debería alejarme si las antenas la huelen.');
+    return;
+  }
+  if (/huele|olor|comida|ferment/.test(t)) {
+    state.dropChannel = 'ferm';
+    document.getElementById('btnFerm').classList.add('active');
+    document.getElementById('btnGeo').classList.remove('active');
+    speak('Fermentación. Si hay gradiente, giro hacia el lado con más olor.');
+    return;
+  }
+  if (/antena/.test(t)) {
+    const on = flyRoom.occludeAntenna('L');
+    speak(on ? 'Antena izquierda restaurada.' : 'Oculté la antena izquierda. El palpo no da dirección.');
+    return;
+  }
   if (/baila/.test(t)) { doDance(); speak('¡A bailar!'); return; }
   if (/saluda|hola/.test(t)) { doGesture('wave'); }
   if (/salta/.test(t)) { doGesture('jump'); speak('¡Wiii!'); return; }
@@ -947,7 +997,9 @@ function place(mat4) {
   particles.position.copy(pos);
   particles.visible = true;
   state.lastInteraction = clock.elapsedTime;
-  setTimeout(() => speak('Hola, soy ' + CHARACTERS[state.charKey].name + '. Estoy aquí contigo. ¿Cómo te sientes hoy?', 'happy'), 800);
+  flyRoom.bindOrigin(pos.x, pos.z, state.lookYaw);
+  flyRoom.syncPose(pos.x, pos.z, state.lookYaw);
+  setTimeout(() => speak('Hola, soy ' + CHARACTERS[state.charKey].name + '. Huelo el suelo con antenas. Toca para dejar fermentación.', 'happy'), 800);
 }
 
 const controller = renderer.xr.getController(0);
@@ -957,12 +1009,22 @@ controller.addEventListener('select', () => {
   if (!state.placed) {
     place(reticle.matrix);
   } else {
-    // Ya colocada → caminar hasta el punto
     const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-    state.walkTarget.copy(p);
-    state.mode = 'walkTo';
+    flyRoom.drop(state.dropChannel, p.x, p.z);
+    const color = state.dropChannel === 'geosmin' ? 0x6bff9d : 0xffb347;
+    const m = new THREE.Mesh(
+      new THREE.CircleGeometry(0.09, 20).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
+    );
+    m.position.copy(p); m.position.y += 0.004;
+    scene.add(m);
+    odorMarks.push(m);
+    state.mode = 'brain';
     const w = animFor('walk');
     if (w) playAnim(w);
+    setStatus(state.dropChannel === 'geosmin'
+      ? 'Geosmina en el suelo — debería evitar'
+      : 'Fermentación — tropotaxis antenal', 4000);
   }
 });
 scene.add(controller);
@@ -1120,13 +1182,14 @@ renderer.setAnimationLoop((ts, frame) => {
     }
     if (state.poseMode) updatePoseHandles();
 
-    // Caminar hacia objetivo
+    // Caminar hacia objetivo (comando Ven) O cerebro MOSCA
     if (state.mode === 'walkTo') {
       const to = new THREE.Vector3().subVectors(state.walkTarget, holder.position);
       to.y = 0;
       const dist = to.length();
       if (dist < 0.08) {
-        state.mode = 'idle';
+        state.mode = 'brain';
+        flyRoom.syncPose(holder.position.x, holder.position.z, state.lookYaw);
         const i = animFor('idle'); if (i) playAnim(i);
       } else {
         to.normalize();
@@ -1139,18 +1202,34 @@ renderer.setAnimationLoop((ts, frame) => {
         holder.position.x += Math.sin(state.lookYaw)*speed*dt;
         holder.position.z += Math.cos(state.lookYaw)*speed*dt;
       }
-    } else {
-      // Mirar al usuario cuando está quieto
-      const toUser = new THREE.Vector3().subVectors(camPos, holder.position);
-      toUser.y = 0;
-      const dist = toUser.length();
-      if (dist > 0.2 && dist < 6) {
-        const desired = Math.atan2(toUser.x, toUser.z);
-        let diff = desired - state.lookYaw;
-        while (diff > Math.PI) diff -= 2*Math.PI;
-        while (diff < -Math.PI) diff += 2*Math.PI;
-        const speed = dist < 1.5 ? 1.8 : 0.7;
-        state.lookYaw += THREE.MathUtils.clamp(diff, -speed*dt, speed*dt);
+    } else if (state.mode !== 'pose' && !(state.gesture && state.gestureT > 0)) {
+      const dCam = Math.hypot(camPos.x - holder.position.x, camPos.z - holder.position.z);
+      const ctrlPos = new THREE.Vector3();
+      controller.getWorldPosition(ctrlPos);
+      const dCtrl = Math.hypot(ctrlPos.x - holder.position.x, ctrlPos.z - holder.position.z);
+      if (dCam < 0.5) flyRoom.setLiveLoom(camPos.x, camPos.z, 1);
+      else if (dCtrl < 0.4) flyRoom.setLiveLoom(ctrlPos.x, ctrlPos.z, 1);
+      else flyRoom.clearLoom();
+
+      if (!flyRoom.bound) flyRoom.bindOrigin(holder.position.x, holder.position.z, state.lookYaw);
+      const pose = flyRoom.step(dt);
+      holder.position.x = pose.arX;
+      holder.position.z = pose.arZ;
+      state.lookYaw = pose.threeHeading;
+      state.mode = 'brain';
+      if (pose.escape) {
+        const r = animFor('run') || animFor('walk');
+        if (r) playAnim(r);
+      } else if (pose.walk > 0.5) {
+        const w = animFor('walk');
+        if (w) playAnim(w);
+      } else {
+        const i = animFor('idle');
+        if (i) playAnim(i);
+      }
+      if (Math.floor(t * 2) !== Math.floor((t - dt) * 2)) setStatus(pose.action + ' — ' + pose.why, 1800);
+      for (const m of odorMarks) {
+        m.material.opacity = 0.22 + 0.32 * Math.abs(Math.sin(t * 2.2));
       }
     }
     holder.rotation.y = state.lookYaw;
@@ -1199,7 +1278,7 @@ function updateLunaProcedural(dt, t, camPos) {
   const breathe = Math.sin(t * 1.3) * 0.008;
 
   // Balanceo al caminar
-  if (state.mode === 'walkTo') {
+  if (state.mode === 'walkTo' || (state.mode === 'brain' && flyRoom.lastIntent && flyRoom.lastIntent.walk > 0.5)) {
     state.walkPhase = (state.walkPhase || 0) + dt * 7;
     holder.rotation.z = Math.sin(state.walkPhase) * 0.05;
   } else {
