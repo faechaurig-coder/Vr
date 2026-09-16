@@ -33,3 +33,6 @@ kaykit_*.glb
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Repo desnudo para clonado HTTP (no debe versionarse)
+VR.git/
