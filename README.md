@@ -11,6 +11,21 @@ Experiencias WebXR para Meta Quest. Se abren directamente en el navegador, sin i
 | `companion.html` | Versión anterior del acompañante |
 | `woman-ar.html` | Prueba inicial de personaje femenino en AR |
 
+## Clonar el repositorio
+
+```bash
+git clone https://work-1-tiasyprqzjhyessz.prod-runtime.all-hands.dev/VR.git
+```
+
+Para subirlo a tu propio GitHub:
+
+```bash
+cd VR
+git remote remove origin
+git remote add origin https://github.com/TU-USUARIO/VR.git
+git push -u origin master
+```
+
 ## Cómo usarlo
 
 1. Abre la URL en el navegador de tu Meta Quest.
