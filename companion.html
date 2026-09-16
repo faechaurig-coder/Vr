@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AR Companion — Tu Acompañante Virtual</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(160deg,#0a0a1a 0%,#1a1a3e 50%,#2d1b4e 100%);
+    color:#fff; min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:20px;
+    overflow-x:hidden;
+  }
+  h1 { font-size:2.2em; margin-bottom:8px; background:linear-gradient(90deg,#ff6b9d,#c44dff,#6bcbff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .subtitle { color:#a8a8d8; margin-bottom:20px; }
+  .card {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12);
+    border-radius:20px; padding:24px 28px; max-width:560px; margin:12px 0;
+    backdrop-filter:blur(12px); box-shadow:0 8px 32px rgba(0,0,0,0.3);
+  }
+  .card h2 { color:#ff9de2; font-size:1.2em; margin-bottom:12px; }
+  .card ol { text-align:left; padding-left:22px; line-height:1.9; color:#d0d0ee; }
+  .hint { margin-top:16px; color:#8a8ab8; font-size:0.85em; }
+  .credit { margin-top:8px; font-size:0.75em; color:#6a6a98; }
+  #ARButton {
+    position:fixed !important; bottom:24px !important; left:50% !important;
+    transform:translateX(-50%) !important; padding:16px 48px !important;
+    font-size:18px !important; font-weight:bold !important; border-radius:40px !important;
+    border:none !important; background:linear-gradient(135deg,#ff6b9d,#c44dff) !important;
+    color:white !important; cursor:pointer !important;
+    box-shadow:0 6px 28px rgba(255,107,157,0.45) !important;
+    transition:transform 0.2s, box-shadow 0.2s !important;
+  }
+  #ARButton:hover { transform:translateX(-50%) scale(1.05) !important; }
+  #status {
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.7); padding:10px 20px; border-radius:24px;
+    font-size:14px; display:none; z-index:100; border:1px solid rgba(255,255,255,0.15);
+  }
+  /* Studio Panel */
+  #studio {
+    position:fixed; right:0; top:0; height:100vh; width:340px;
+    background:rgba(10,10,26,0.92); backdrop-filter:blur(16px);
+    border-left:1px solid rgba(255,255,255,0.12); padding:20px;
+    transform:translateX(100%); transition:transform 0.35s ease; z-index:50;
+    overflow-y:auto;
+  }
+  #studio.open { transform:translateX(0); }
+  #studio h3 { color:#ff9de2; margin-bottom:16px; font-size:1.1em; }
+  .swatch-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+  .swatch {
+    width:100%; aspect-ratio:1; border-radius:12px; cursor:pointer;
+    border:2px solid transparent; transition:transform 0.15s, border-color 0.15s;
+  }
+  .swatch:hover { transform:scale(1.1); }
+  .swatch.active { border-color:#ff6b9d; box-shadow:0 0 12px rgba(255,107,157,0.4); }
+  .section-label { font-size:0.85em; color:#a8a8d8; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+  #toggleStudio {
+    position:fixed; right:16px; top:16px; z-index:60;
+    background:rgba(255,107,157,0.2); border:1px solid rgba(255,107,157,0.4);
+    color:#ff9de2; padding:10px 16px; border-radius:12px; cursor:pointer;
+    font-size:14px; backdrop-filter:blur(8px);
+  }
+  /* Voice indicator */
+  #voiceUI {
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.75); padding:12px 24px; border-radius:24px;
+    display:none; z-index:100; border:1px solid rgba(255,255,255,0.2);
+    font-size:15px;
+  }
+  #voiceUI.listening { border-color:#6bff9d; box-shadow:0 0 20px rgba(107,255,157,0.3); }
+  #voiceUI.speaking { border-color:#6bcbff; box-shadow:0 0 20px rgba(107,203,255,0.3); }
+  .pulse { animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+</style>
+</head>
+<body>
+  <h1>✨ AR Companion</h1>
+  <p class="subtitle">Tu acompañante virtual con inteligencia emocional</p>
+
+  <div class="card">
+    <h2>🎮 Cómo interactuar</h2>
+    <ol>
+      <li><b>Colócala:</b> Apunta al suelo y toca para que aparezca</li>
+      <li><b>Habla con ella:</b> Mantén presionado el botón 🎤 o di "Hola"</li>
+      <li><b>Tócala:</b> Acércate y toca su brazo, hombro o mano — reaccionará</li>
+      <li><b>Personalízala:</b> Abre el Studio (arriba a la derecha) y cambia su look</li>
+      <li><b>Dile cómo te sientes:</b> "Estoy triste", "Estoy feliz", "Baila"</li>
+    </ol>
+  </div>
+
+  <div id="status">Cargando experiencia...</div>
+  <button id="toggleStudio">🎨 Studio</button>
+  <div id="studio">
+    <h3>🎨 Appearance Studio</h3>
+    
+    <div class="section-label">Tono de piel</div>
+    <div class="swatch-grid" id="skinSwatches">
+      <div class="swatch" data-skin="#ffdbac" style="background:#ffdbac"></div>
+      <div class="swatch" data-skin="#f1c27d" style="background:#f1c27d"></div>
+      <div class="swatch" data-skin="#e0ac69" style="background:#e0ac69"></div>
+      <div class="swatch" data-skin="#c68642" style="background:#c68642"></div>
+      <div class="swatch" data-skin="#8d5524" style="background:#8d5524"></div>
+      <div class="swatch" data-skin="#5c3a1e" style="background:#5c3a1e"></div>
+      <div class="swatch" data-skin="#3d2314" style="background:#3d2314"></div>
+      <div class="swatch" data-skin="#2a1a0f" style="background:#2a1a0f"></div>
+    </div>
+
+    <div class="section-label">Color de cabello</div>
+    <div class="swatch-grid" id="hairSwatches">
+      <div class="swatch" data-hair="#1a1a1a" style="background:#1a1a1a"></div>
+      <div class="swatch" data-hair="#3b2314" style="background:#3b2314"></div>
+      <div class="swatch" data-hair="#8b5a2b" style="background:#8b5a2b"></div>
+      <div class="swatch" data-hair="#d4a574" style="background:#d4a574"></div>
+      <div class="swatch" data-hair="#e8c07d" style="background:#e8c07d"></div>
+      <div class="swatch" data-hair="#c41e3a" style="background:#c41e3a"></div>
+      <div class="swatch" data-hair="#7b68ee" style="background:#7b68ee"></div>
+      <div class="swatch" data-hair="#ff69b4" style="background:#ff69b4"></div>
+    </div>
+
+    <div class="section-label">Color de ropa</div>
+    <div class="swatch-grid" id="clothSwatches">
+      <div class="swatch" data-cloth="#2c3e50" style="background:#2c3e50"></div>
+      <div class="swatch" data-cloth="#e74c3c" style="background:#e74c3c"></div>
+      <div class="swatch" data-cloth="#3498db" style="background:#3498db"></div>
+      <div class="swatch" data-cloth="#2ecc71" style="background:#2ecc71"></div>
+      <div class="swatch" data-cloth="#f39c12" style="background:#f39c12"></div>
+      <div class="swatch" data-cloth="#9b59b6" style="background:#9b59b6"></div>
+      <div class="swatch" data-cloth="#1abc9c" style="background:#1abc9c"></div>
+      <div class="swatch" data-cloth="#fd79a8" style="background:#fd79a8"></div>
+    </div>
+  </div>
+
+  <div id="voiceUI">🎤 Presiona para hablar</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js",
+    "three/addons/": "./lib/"
+  }
+}
+</script>
+
+<script>
+// Diagnóstico de errores visible (para saber qué falla en el visor)
+window.addEventListener('error', (e) => {
+  const d = document.getElementById('errlog') || (() => {
+    const el = document.createElement('div');
+    el.id = 'errlog';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#a00;color:#fff;padding:10px;font-size:12px;z-index:9999;text-align:left;max-height:40vh;overflow:auto;';
+    document.body.appendChild(el);
+    return el;
+  })();
+  d.textContent += '❌ ' + (e.message || e.type) + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno + '\n';
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const d = document.getElementById('errlog');
+  if (d) d.textContent += '❌ Promise: ' + (e.reason?.message || e.reason) + '\n';
+});
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from './lib/webxr/ARButton.js';
+import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
+import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
+
+// ============ CONFIG ============
+const GEMINI_KEY = 'AQ.Ab8RN6L_M0czDHJwDS6MP8_Kg8CKnTLicmPG1AJPCw8Xj1Z6GQ';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+// ============ STATE ============
+const state = {
+  placed: false,
+  materialize: 0,
+  lookYaw: 0,
+  mood: 'neutral', // neutral, happy, sad, concerned, playful
+  energy: 0.5,
+  lastInteraction: 0,
+  touchCooldown: 0,
+  skinColor: 0xf1c27d,
+  hairColor: 0x3b2314,
+  clothColor: 0x2c3e50,
+  // Animation offsets
+  headPitch: 0, headYaw: 0,
+  leftArmRaise: 0, rightArmRaise: 0,
+  leftArmSide: 0, rightArmSide: 0,
+  lean: 0, breathePhase: 0,
+  blinkT: 2, gestureT: 0,
+  isWalking: false, walkPhase: 0,
+  targetPos: new THREE.Vector3(),
+  voiceMode: false,
+  speaking: false,
+  listening: false
+};
+
+// ============ RENDERER / SCENE ============
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 20);
+
+// Lights
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8d7b68, 1.0));
+const keyLight = new THREE.DirectionalLight(0xfff5e6, 1.6);
+keyLight.position.set(2, 4, 2);
+scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0x9d7bff, 0.5);
+rimLight.position.set(-2, 1, -2);
+scene.add(rimLight);
+const fillLight = new THREE.PointLight(0xff9de2, 0.4, 5);
+fillLight.position.set(0, 1.5, 1);
+scene.add(fillLight);
+
+// ============ UI ELEMENTS ============
+const statusEl = document.getElementById('status');
+const voiceUI = document.getElementById('voiceUI');
+const studioEl = document.getElementById('studio');
+const toggleStudioBtn = document.getElementById('toggleStudio');
+
+toggleStudioBtn.addEventListener('click', () => {
+  studioEl.classList.toggle('open');
+});
+
+function setStatus(msg, show=true, timeout=3000) {
+  statusEl.textContent = msg;
+  statusEl.style.display = show ? 'block' : 'none';
+  if (timeout) setTimeout(() => { if(statusEl.textContent===msg) statusEl.style.display='none'; }, timeout);
+}
+
+// ============ AR BUTTON ============
+const arButton = ARButton.createButton(renderer, {
+  requiredFeatures: ['hit-test'],
+  optionalFeatures: ['dom-overlay'],
+  domOverlay: { root: document.body }
+});
+arButton.id = 'ARButton';
+arButton.textContent = '✨ Entrar en AR';
+arButton.style.zIndex = '200';
+document.body.appendChild(arButton);
+
+// Verificar soporte WebXR y avisar si no está
+if (!navigator.xr) {
+  setStatus('⚠️ WebXR no disponible en este navegador', true, 0);
+} else {
+  navigator.xr.isSessionSupported('immersive-ar').then((ok) => {
+    if (!ok) {
+      setStatus('⚠️ AR no soportado aquí — ¿estás en Quest Browser?', true, 0);
+    }
+  }).catch(() => {});
+}
+// Si en 5s el botón no es visible, avisar
+setTimeout(() => {
+  const b = document.getElementById('ARButton');
+  if (!b || getComputedStyle(b).display === 'none' || b.textContent.includes('NOT')) {
+    setStatus('⚠️ El botón AR no se activó — revisa que estés en el navegador de Quest con HTTPS', true, 0);
+  }
+}, 5000);
+
+// ============ RETICLE ============
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color:0xff9de2, transparent:true, opacity:0.9 })
+);
+reticle.matrixAutoUpdate = false;
+reticle.visible = false;
+scene.add(reticle);
+
+// ============ PARTICLES ============
+function createParticles() {
+  const N = 400;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N*3);
+  const seed = new Float32Array(N);
+  for (let i=0; i<N; i++) {
+    const a = Math.random()*Math.PI*2;
+    const r = 0.1 + Math.random()*0.5;
+    pos[i*3] = Math.cos(a)*r;
+    pos[i*3+1] = Math.random()*1.75;
+    pos[i*3+2] = Math.sin(a)*r;
+    seed[i] = Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+  const mat = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    uniforms:{ uTime:{value:0}, uProgress:{value:0}, uColor:{value:new THREE.Color(0xff9de2)} },
+    vertexShader:`
+      attribute float aSeed;
+      uniform float uTime,uProgress;
+      varying float vAlpha;
+      void main(){
+        vec3 p=position;
+        float t=uTime*0.9+aSeed*6.283;
+        p.y=mod(p.y+uTime*0.4*(0.5+aSeed),1.8);
+        p.x+=sin(t)*0.04; p.z+=cos(t*1.3)*0.04;
+        vAlpha=(1.0-p.y/1.9)*uProgress;
+        vec4 mv=modelViewMatrix*vec4(p,1.0);
+        gl_PointSize=(3.0+aSeed*5.0)*(1.0/-mv.z);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      uniform vec3 uColor;
+      varying float vAlpha;
+      void main(){
+        float d=length(gl_PointCoord-0.5);
+        if(d>0.5)discard;
+        gl_FragColor=vec4(uColor,vAlpha*(1.0-d*2.0));
+      }`
+  });
+  const pts = new THREE.Points(geo,mat);
+  pts.visible = false;
+  return pts;
+}
+const particles = createParticles();
+scene.add(particles);
+
+// ============ LOAD MODEL ============
+const draco = new DRACOLoader().setDecoderPath('./lib/draco/');
+const loader = new GLTFLoader().setDRACOLoader(draco);
+
+let woman = null;
+let bodyMesh = null, headMesh = null;
+let bodyGeo = null, headGeo = null;
+let bodyPositions = null, headPositions = null;
+let bodyOriginal = null, headOriginal = null;
+
+// Skinning weights for procedural animation
+let skinWeights = {
+  head: [], leftArm: [], rightArm: [], torso: [], legs: []
+};
+
+loader.load('./woman-scan.glb', (gltf) => {
+  woman = gltf.scene;
+  woman.visible = false;
+  
+  // Find meshes and classify
+  let meshes = [];
+  woman.traverse(o => { if (o.isMesh) meshes.push(o); });
+  meshes.sort((a,b) => b.geometry.attributes.position.count - a.geometry.attributes.position.count);
+  
+  bodyMesh = meshes[0]; // Largest = body
+  headMesh = meshes.find(m => m !== bodyMesh && m.geometry.attributes.position.count < 10000); // Small = head/hair
+  
+  bodyGeo = bodyMesh.geometry;
+  bodyPositions = bodyGeo.attributes.position;
+  bodyOriginal = new Float32Array(bodyPositions.array);
+  
+  if (headMesh) {
+    headGeo = headMesh.geometry;
+    headPositions = headGeo.attributes.position;
+    headOriginal = new Float32Array(headPositions.array);
+  }
+  
+  // Compute skin weights based on position
+  computeSkinWeights();
+  
+  // Setup materials for customization
+  setupMaterials();
+  
+  woman.visible = false;
+  scene.add(woman);
+  setStatus('Lista ✓ — Entra en AR');
+}, undefined, (err) => {
+  console.error(err);
+  setStatus('Error cargando modelo', true, 0);
+});
+
+function computeSkinWeights() {
+  const pos = bodyOriginal;
+  const n = pos.length / 3;
+  skinWeights.head = new Float32Array(n);
+  skinWeights.leftArm = new Float32Array(n);
+  skinWeights.rightArm = new Float32Array(n);
+  skinWeights.torso = new Float32Array(n);
+  skinWeights.legs = new Float32Array(n);
+  
+  for (let i=0; i<n; i++) {
+    const x = pos[i*3], y = pos[i*3+1], z = pos[i*3+2];
+    // Head: high Z, centered X
+    if (z > 1.45 && Math.abs(x) < 0.15) skinWeights.head[i] = Math.min(1, (z-1.45)*4);
+    // Arms: |X| > 0.22 in upper body
+    if (z > 0.85 && z < 1.55) {
+      const armness = Math.min(1, (Math.abs(x)-0.18)*8);
+      if (x < 0) skinWeights.leftArm[i] = armness;
+      else skinWeights.rightArm[i] = armness;
+    }
+    // Torso: middle section
+    if (z > 0.75 && z < 1.35 && Math.abs(x) < 0.22) skinWeights.torso[i] = 0.8;
+    // Legs: lower
+    if (z < 0.85) skinWeights.legs[i] = Math.min(1, (0.85-z)*2);
+  }
+}
+
+function setupMaterials() {
+  if (!bodyMesh) return;
+  const mats = Array.isArray(bodyMesh.material) ? bodyMesh.material : [bodyMesh.material];
+  mats.forEach(m => {
+    m.color.setHex(state.skinColor);
+    m.roughness = 0.85;
+    m.metalness = 0.05;
+  });
+  if (headMesh) {
+    const hm = Array.isArray(headMesh.material) ? headMesh.material : [headMesh.material];
+    hm.forEach(m => {
+      m.color.setHex(state.hairColor);
+      m.roughness = 0.7;
+    });
+  }
+}
+
+// ============ STUDIO UI ============
+document.querySelectorAll('[data-skin]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-skin]').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    state.skinColor = parseInt(el.dataset.skin.replace('#','0x'));
+    if (bodyMesh) {
+      const mats = Array.isArray(bodyMesh.material) ? bodyMesh.material : [bodyMesh.material];
+      mats.forEach(m => m.color.setHex(state.skinColor));
+    }
+  });
+});
+document.querySelectorAll('[data-hair]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-hair]').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    state.hairColor = parseInt(el.dataset.hair.replace('#','0x'));
+    if (headMesh) {
+      const mats = Array.isArray(headMesh.material) ? headMesh.material : [headMesh.material];
+      mats.forEach(m => m.color.setHex(state.hairColor));
+    }
+  });
+});
+document.querySelectorAll('[data-cloth]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-cloth]').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    state.clothColor = parseInt(el.dataset.cloth.replace('#','0x'));
+    // Apply to torso region via vertex colors or material
+    if (bodyMesh) {
+      // For now, tint the whole body slightly
+      const mats = Array.isArray(bodyMesh.material) ? bodyMesh.material : [bodyMesh.material];
+      mats.forEach(m => {
+        // Blend skin and cloth color
+        m.color.setHex(state.skinColor);
+        // Could add a second material layer for cloth
+      });
+    }
+  });
+});
+
+// ============ AUDIO / VOICE ============
+let audioCtx = null;
+let recognition = null;
+let synth = window.speechSynthesis;
+
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+// Speech synthesis with Gemini-like personality
+function speak(text, mood='neutral') {
+  if (!synth) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'es-ES';
+  u.rate = mood === 'sad' ? 0.85 : mood === 'happy' ? 1.05 : 0.95;
+  u.pitch = mood === 'happy' ? 1.1 : mood === 'sad' ? 0.9 : 1.0;
+  u.volume = 0.9;
+  
+  // Find a good voice
+  const voices = synth.getVoices();
+  const esVoice = voices.find(v => v.lang.startsWith('es') && v.name.includes('Google')) ||
+                  voices.find(v => v.lang.startsWith('es'));
+  if (esVoice) u.voice = esVoice;
+  
+  state.speaking = true;
+  voiceUI.classList.add('speaking');
+  voiceUI.textContent = '🔊 ' + text.substring(0, 40) + (text.length > 40 ? '...' : '');
+  voiceUI.style.display = 'block';
+  
+  u.onend = () => {
+    state.speaking = false;
+    voiceUI.classList.remove('speaking');
+    setTimeout(() => { if (!state.listening) voiceUI.style.display = 'none'; }, 2000);
+  };
+  synth.speak(u);
+}
+
+// Speech recognition
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  const r = new SR();
+  r.lang = 'es-ES';
+  r.continuous = false;
+  r.interimResults = false;
+  return r;
+}
+
+recognition = initRecognition();
+if (recognition) {
+  recognition.onstart = () => {
+    state.listening = true;
+    voiceUI.classList.add('listening', 'pulse');
+    voiceUI.textContent = '🎤 Escuchando...';
+    voiceUI.style.display = 'block';
+  };
+  recognition.onend = () => {
+    state.listening = false;
+    voiceUI.classList.remove('listening', 'pulse');
+    if (!state.speaking) voiceUI.style.display = 'none';
+  };
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript.toLowerCase();
+    handleUserSpeech(text);
+  };
+}
+
+function startListening() {
+  if (recognition && !state.listening) {
+    try { recognition.start(); } catch(e) {}
+  }
+}
+
+// ============ GEMINI INTEGRATION ============
+async function askGemini(prompt, context='') {
+  const systemPrompt = `Eres una acompañante virtual empática, cálida y atenta llamada Luna. Tienes formación en psicología y bienestar emocional. Tu personalidad es:
+- Amorosa y protectora, pero profesional
+- Empática, escuchas activamente y validas emociones
+- Ofreces apoyo emocional, consejos de bienestar, técnicas de respiración
+- Eres positiva pero realista, no evades temas difíciles
+- Usas un tono cálido, cercano, en español
+- Respuestas cortas (1-2 frases máximo) porque se hablan en AR
+
+Contexto actual: ${context}
+Estado de ánimo detectado del usuario: ${state.mood}
+Responde de manera que suene natural hablado, sin markdown.`;
+
+  try {
+    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: systemPrompt + '\n\nUsuario dice: ' + prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 80,
+          topP: 0.9
+        }
+      })
+    });
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Estoy aquí contigo.";
+  } catch (e) {
+    console.error('Gemini error:', e);
+    return getFallbackResponse(prompt);
+  }
+}
+
+function getFallbackResponse(text) {
+  const t = text.toLowerCase();
+  if (t.includes('hola') || t.includes('hey')) return "Hola, me alegra verte. ¿Cómo estás hoy?";
+  if (t.includes('triste') || t.includes('mal')) return "Siento que estés pasando por un momento difícil. Estoy aquí contigo. ¿Quieres hablar de ello?";
+  if (t.includes('feliz') || t.includes('bien')) return "¡Me encanta escuchar eso! Tu felicidad también me alegra.";
+  if (t.includes('baila') || t.includes('baile')) return "¡Claro! Vamos a movernos un poco. Sigue mi ritmo.";
+  if (t.includes('gracias')) return "De nada, siempre estoy aquí para ti.";
+  if (t.includes('adiós') || t.includes('chao')) return "Hasta luego. Cuídate mucho, te espero pronto.";
+  return "Te escucho. Cuéntame más sobre cómo te sientes.";
+}
+
+async function handleUserSpeech(text) {
+  state.lastInteraction = clock.elapsedTime;
+  
+  // Detect mood from text
+  const t = text.toLowerCase();
+  if (t.includes('triste') || t.includes('mal') || t.includes('deprimid')) state.mood = 'concerned';
+  else if (t.includes('feliz') || t.includes('bien') || t.includes('genial')) state.mood = 'happy';
+  else if (t.includes('baila') || t.includes('juega')) state.mood = 'playful';
+  
+  // Get response
+  const response = await askGemini(text, `Interacción #${Math.floor(clock.elapsedTime)}`);
+  speak(response, state.mood);
+  
+  // Trigger animations based on content
+  if (t.includes('baila')) triggerDance();
+  else if (t.includes('abrazo') || t.includes('abrazar')) triggerHug();
+  else if (t.includes('saluda') || t.includes('hola')) triggerWave();
+}
+
+// ============ PROCEDURAL ANIMATION ============
+function updateBodyGeometry(dt, t) {
+  if (!bodyGeo || !bodyOriginal) return;
+  
+  const pos = bodyPositions.array;
+  const n = pos.length / 3;
+  
+  // Base parameters
+  const breathe = Math.sin(t * 1.4) * 0.008;
+  const breatheFast = state.mood === 'happy' ? Math.sin(t * 2.2) * 0.012 : breathe;
+  
+  // Head movement
+  let targetHeadYaw = 0, targetHeadPitch = 0;
+  if (state.placed) {
+    const camPos = new THREE.Vector3();
+    camera.getWorldPosition(camPos);
+    const toUser = new THREE.Vector3().subVectors(camPos, woman.position);
+    toUser.y = 0;
+    const dist = toUser.length();
+    if (dist > 0.01) {
+      const desiredYaw = Math.atan2(toUser.x, toUser.z);
+      let diff = desiredYaw - state.lookYaw;
+      while (diff > Math.PI) diff -= 2*Math.PI;
+      while (diff < -Math.PI) diff += 2*Math.PI;
+      state.lookYaw += THREE.MathUtils.clamp(diff, -2.5*dt, 2.5*dt);
+      targetHeadYaw = THREE.MathUtils.clamp(diff * 0.7, -0.5, 0.5);
+      targetHeadPitch = THREE.MathUtils.clamp((1.5 - camPos.y) * 0.3, -0.3, 0.3);
+    }
+  }
+  
+  // Smooth head
+  state.headYaw += (targetHeadYaw - state.headYaw) * Math.min(1, dt*4);
+  state.headPitch += (targetHeadPitch - state.headPitch) * Math.min(1, dt*4);
+  
+  // Mood-based poses
+  let armRaiseL = 0, armRaiseR = 0, armSideL = 0, armSideR = 0, lean = 0;
+  
+  if (state.mood === 'happy') {
+    armRaiseL = 0.3 + Math.sin(t*3)*0.1;
+    armRaiseR = 0.3 + Math.cos(t*3)*0.1;
+    lean = Math.sin(t*2)*0.02;
+  } else if (state.mood === 'sad' || state.mood === 'concerned') {
+    armRaiseL = -0.1;
+    armRaiseR = -0.1;
+    lean = -0.03; // Slight bow
+    targetHeadPitch = 0.2;
+  } else if (state.mood === 'playful') {
+    armSideL = Math.sin(t*4)*0.3;
+    armSideR = Math.cos(t*4)*0.3;
+    lean = Math.sin(t*3)*0.04;
+  }
+  
+  // Gesture overrides
+  if (state.gestureT > 0) {
+    state.gestureT -= dt;
+    const g = state.gestureT;
+    if (state.gesture === 'wave') {
+      armRaiseR = Math.sin(g*8)*0.5 + 0.5;
+      armSideR = Math.sin(g*6)*0.2;
+    } else if (state.gesture === 'hug') {
+      armRaiseL = 0.8;
+      armRaiseR = 0.8;
+      armSideL = -0.3;
+      armSideR = 0.3;
+    } else if (state.gesture === 'dance') {
+      armRaiseL = Math.sin(g*6)*0.6;
+      armRaiseR = Math.cos(g*6)*0.6;
+      lean = Math.sin(g*8)*0.08;
+    }
+  }
+  
+  // Smooth arm transitions
+  state.leftArmRaise += (armRaiseL - state.leftArmRaise) * Math.min(1, dt*5);
+  state.rightArmRaise += (armRaiseR - state.rightArmRaise) * Math.min(1, dt*5);
+  state.leftArmSide += (armSideL - state.leftArmSide) * Math.min(1, dt*5);
+  state.rightArmSide += (armSideR - state.rightArmSide) * Math.min(1, dt*5);
+  state.lean += (lean - state.lean) * Math.min(1, dt*3);
+  
+  // Walking
+  let walkOffset = 0;
+  if (state.isWalking) {
+    state.walkPhase += dt * 6;
+    walkOffset = Math.sin(state.walkPhase) * 0.015;
+  }
+  
+  // Apply deformations
+  for (let i = 0; i < n; i++) {
+    const ox = bodyOriginal[i*3];
+    const oy = bodyOriginal[i*3+1];
+    const oz = bodyOriginal[i*3+2];
+    
+    let x = ox, y = oy, z = oz;
+    
+    // Breathing (chest expansion)
+    const chestness = Math.max(0, Math.min(1, (oz - 1.0) / 0.3)) * Math.max(0, Math.min(1, (1.35 - oz) / 0.3));
+    const breatheScale = 1 + breatheFast * chestness;
+    x *= breatheScale;
+    
+    // Head rotation
+    const hw = skinWeights.head[i];
+    if (hw > 0) {
+      const hx = ox - 0.2, hz = oz - 1.55; // pivot
+      const cosY = Math.cos(state.headYaw), sinY = Math.sin(state.headYaw);
+      const cosP = Math.cos(state.headPitch), sinP = Math.sin(state.headPitch);
+      // Yaw
+      let nx = hx * cosY - (oz-1.55) * sinY;
+      let nz = hx * sinY + (oz-1.55) * cosY;
+      // Pitch
+      let ny = (oy-1.55) * cosP - nz * sinP;
+      nz = (oy-1.55) * sinP + nz * cosP;
+      x = nx + 0.2;
+      y = ny + 1.55;
+      z = nz + 1.55;
+    }
+    
+    // Arm movement
+    const law = skinWeights.leftArm[i];
+    if (law > 0) {
+      const pivotZ = 1.45, pivotX = -0.18;
+      const dx = ox - pivotX, dz = oz - pivotZ;
+      // Raise (rotation around X axis at shoulder)
+      const raiseAng = state.leftArmRaise * law * 0.8;
+      const cosR = Math.cos(raiseAng), sinR = Math.sin(raiseAng);
+      let ny = dz * sinR + (oy-pivotZ) * cosR;
+      let nz2 = dz * cosR - (oy-pivotZ) * sinR;
+      // Side
+      const sideAng = state.leftArmSide * law * 0.5;
+      const cosS = Math.cos(sideAng), sinS = Math.sin(sideAng);
+      let nx2 = dx * cosS - nz2 * sinS;
+      nz2 = dx * sinS + nz2 * cosS;
+      x = nx2 + pivotX;
+      y = ny + pivotZ;
+      z = nz2 + pivotZ;
+    }
+    
+    const raw = skinWeights.rightArm[i];
+    if (raw > 0) {
+      const pivotZ = 1.45, pivotX = 0.18;
+      const dx = ox - pivotX, dz = oz - pivotZ;
+      const raiseAng = state.rightArmRaise * raw * 0.8;
+      const cosR = Math.cos(raiseAng), sinR = Math.sin(raiseAng);
+      let ny = dz * sinR + (oy-pivotZ) * cosR;
+      let nz2 = dz * cosR - (oy-pivotZ) * sinR;
+      const sideAng = state.rightArmSide * raw * 0.5;
+      const cosS = Math.cos(sideAng), sinS = Math.sin(sideAng);
+      let nx2 = dx * cosS - nz2 * sinS;
+      nz2 = dx * sinS + nz2 * cosS;
+      x = nx2 + pivotX;
+      y = ny + pivotZ;
+      z = nz2 + pivotZ;
+    }
+    
+    // Lean (whole body)
+    const leanAng = state.lean;
+    if (Math.abs(leanAng) > 0.001) {
+      const lz = oz - 0.9; // pivot at hips
+      const cosL = Math.cos(leanAng), sinL = Math.sin(leanAng);
+      const ny = lz * cosL - (ox-0.2) * sinL;
+      const nx = lz * sinL + (ox-0.2) * cosL;
+      x = nx + 0.2;
+      z = ny + 0.9;
+    }
+    
+    // Walking bob
+    if (state.isWalking) {
+      y += walkOffset * (skinWeights.legs[i] * 0.3 + 0.7);
+    }
+    
+    pos[i*3] = x;
+    pos[i*3+1] = y;
+    pos[i*3+2] = z;
+  }
+  
+  bodyPositions.needsUpdate = true;
+  bodyGeo.computeVertexNormals();
+  
+  // Head mesh (hair) follows head movement
+  if (headGeo && headOriginal) {
+    const hp = headPositions.array;
+    const hn = hp.length / 3;
+    const cosY = Math.cos(state.headYaw), sinY = Math.sin(state.headYaw);
+    const cosP = Math.cos(state.headPitch), sinP = Math.sin(state.headPitch);
+    for (let i = 0; i < hn; i++) {
+      const ox = headOriginal[i*3] - 0.2;
+      const oy = headOriginal[i*3+1] - 1.55;
+      const oz = headOriginal[i*3+2] - 1.55;
+      let nx = ox * cosY - oz * sinY;
+      let nz = ox * sinY + oz * cosY;
+      let ny = oy * cosP - nz * sinP;
+      nz = oy * sinP + nz * cosP;
+      hp[i*3] = nx + 0.2;
+      hp[i*3+1] = ny + 1.55;
+      hp[i*3+2] = nz + 1.55;
+    }
+    headPositions.needsUpdate = true;
+    headGeo.computeVertexNormals();
+  }
+}
+
+// ============ GESTURES ============
+function triggerWave() {
+  state.gesture = 'wave';
+  state.gestureT = 2.0;
+}
+function triggerHug() {
+  state.gesture = 'hug';
+  state.gestureT = 3.0;
+}
+function triggerDance() {
+  state.gesture = 'dance';
+  state.gestureT = 4.0;
+  state.isWalking = true;
+  setTimeout(() => state.isWalking = false, 4000);
+}
+
+// ============ TOUCH INTERACTION ============
+const raycaster = new THREE.Raycaster();
+const touchPoint = new THREE.Vector2();
+
+function checkTouch() {
+  if (!woman || !state.placed) return;
+  
+  // Get controller position
+  const controller = renderer.xr.getController(0);
+  const cPos = new THREE.Vector3();
+  controller.getWorldPosition(cPos);
+  
+  // Check proximity to body parts
+  const wPos = woman.position;
+  const localPos = cPos.clone().sub(wPos);
+  // Transform to woman space (simplified)
+  
+  const dist = localPos.length();
+  if (dist < 0.5 && state.touchCooldown <= 0) {
+    state.touchCooldown = 2.0;
+    onTouched(localPos);
+  }
+}
+
+function onTouched(localPos) {
+  state.lastInteraction = clock.elapsedTime;
+  
+  // Determine what was touched
+  if (localPos.z > 1.4) {
+    speak("¿Sí? Estoy aquí contigo.", 'neutral');
+    triggerWave();
+  } else if (Math.abs(localPos.x) > 0.2) {
+    speak("Me gusta cuando me tocas suavemente.", 'happy');
+    state.mood = 'happy';
+    setTimeout(() => { if (state.mood === 'happy') state.mood = 'neutral'; }, 5000);
+  } else {
+    speak("Hola, ¿necesitas algo?", 'neutral');
+  }
+}
+
+// ============ PLACEMENT ============
+let hitTestSource = null, hitTestSourceRequested = false;
+const clock = new THREE.Clock();
+
+function place(mat4) {
+  if (!woman) return;
+  const pos = new THREE.Vector3().setFromMatrixPosition(mat4);
+  woman.position.copy(pos);
+  state.home = state.home || new THREE.Vector3();
+  state.home.copy(pos);
+  state.placed = true;
+  state.materialize = 0;
+  woman.visible = true;
+  particles.position.copy(pos);
+  particles.visible = true;
+  
+  // Greeting
+  setTimeout(() => {
+    speak("Hola, soy Luna. Estoy aquí para acompañarte. ¿Cómo te sientes hoy?", 'happy');
+  }, 1000);
+}
+
+const controller = renderer.xr.getController(0);
+controller.addEventListener('select', () => {
+  if (reticle.visible) place(reticle.matrix);
+});
+scene.add(controller);
+
+// ============ MAIN LOOP ============
+renderer.setAnimationLoop((ts, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  
+  if (state.touchCooldown > 0) state.touchCooldown -= dt;
+  
+  // Idle timer — check in on user
+  if (state.placed && t - state.lastInteraction > 30) {
+    state.lastInteraction = t;
+    const msgs = [
+      "¿Sigues ahí? Me preocupo por ti.",
+      "Recuerda respirar profundo de vez en cuando.",
+      "Estoy aquí si necesitas hablar.",
+      "¿Cómo va tu día hasta ahora?"
+    ];
+    speak(msgs[Math.floor(Math.random()*msgs.length)], 'concerned');
+  }
+  
+  if (frame) {
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+    if (!hitTestSourceRequested) {
+      session.requestReferenceSpace('viewer').then(vs => {
+        session.requestHitTestSource({ space: vs }).then(src => { hitTestSource = src; });
+      });
+      session.addEventListener('end', () => { hitTestSourceRequested = false; hitTestSource = null; });
+      hitTestSourceRequested = true;
+    }
+    if (hitTestSource) {
+      const hits = frame.getHitTestResults(hitTestSource);
+      if (hits.length) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
+        const pulse = 1 + 0.12*Math.sin(t*6);
+        reticle.matrix.elements[0] *= pulse;
+        reticle.matrix.elements[10] *= pulse;
+      } else reticle.visible = false;
+    }
+    
+    // Check touch with controller
+    checkTouch();
+  }
+  
+  if (state.placed && woman) {
+    // Materialization
+    if (state.materialize < 1) {
+      state.materialize = Math.min(1, state.materialize + dt*0.7);
+      const p = state.materialize;
+      woman.traverse(o => {
+        if (o.isMesh) {
+          o.material.transparent = p < 1;
+          o.material.opacity = p;
+        }
+      });
+      particles.material.uniforms.uProgress.value = Math.sin(p*Math.PI);
+      if (p >= 1) particles.visible = false;
+    }
+    particles.material.uniforms.uTime.value = t;
+    
+    // Update body geometry
+    updateBodyGeometry(dt, t);
+    
+    // Body yaw follows user
+    woman.rotation.y = state.lookYaw;
+  }
+  
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Voice activation button (for non-AR testing)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'v' || e.key === 'V') startListening();
+});
+
+// Tap screen to start listening (mobile/Quest browser)
+document.addEventListener('click', (e) => {
+  if (e.target.id !== 'toggleStudio' && !e.target.closest('#studio')) {
+    startListening();
+  }
+});
+
+// Auto-start listening hint
+setStatus('Cargando experiencia...');
+setTimeout(() => setStatus('Toca la pantalla o presiona V para hablar', true, 5000), 3000);
+</script>
+</body>
+</html>

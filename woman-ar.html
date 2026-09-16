@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Mujer AR - Acompañante Virtual</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 20px;
+  }
+  h1 { font-size: 2em; margin-bottom: 8px; }
+  .card {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px; padding: 22px 26px; max-width: 540px; margin-top: 18px;
+    backdrop-filter: blur(8px);
+  }
+  .card h2 { color: #e0aaff; font-size: 1.15em; margin-bottom: 10px; }
+  .card ol { text-align: left; padding-left: 22px; line-height: 1.9; color: #d8d0ee; }
+  .hint { margin-top: 16px; color: #9d94c8; font-size: 0.85em; }
+  .credit { margin-top: 10px; font-size: 0.75em; color: #7a72a8; }
+  #ARButton {
+    position: fixed !important; bottom: 30px !important; left: 50% !important;
+    transform: translateX(-50%) !important; padding: 16px 44px !important;
+    font-size: 18px !important; font-weight: bold !important; border-radius: 40px !important;
+    border: none !important; background: linear-gradient(135deg, #a855f7, #ec4899) !important;
+    color: white !important; cursor: pointer !important;
+    box-shadow: 0 6px 24px rgba(200,80,220,0.5) !important;
+  }
+  #status {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); padding: 8px 18px; border-radius: 20px;
+    font-size: 14px; display: none; z-index: 100;
+  }
+</style>
+</head>
+<body>
+  <h1>👩 Acompañante AR</h1>
+  <p>Una presencia virtual en tu sala real</p>
+
+  <div class="card">
+    <h2>📋 Instrucciones</h2>
+    <ol>
+      <li>Pulsa <b>"Entrar en AR"</b> y acepta los permisos</li>
+      <li>Apunta al <b>suelo</b> y toca para colocarla</li>
+      <li><b>Acércate</b> — ella girará para mirarte 👀</li>
+      <li><b>Aléjate mucho</b> y reaparecerá con efecto de materialización ✨</li>
+      <li>Toca otro lugar para reubicarla</li>
+    </ol>
+  </div>
+  <div id="status">Cargando modelo...</div>
+  <p class="hint">Modelo: "MUJER COMPRA BOLSA AGARRA" — Sketchfab (CC-BY 4.0)</p>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js",
+    "three/addons/": "./lib/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from './lib/webxr/ARButton.js';
+import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
+import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
+
+// ---------- Renderer / escena ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 20);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8d7b68, 1.2));
+const dir = new THREE.DirectionalLight(0xffffff, 1.5);
+dir.position.set(2, 4, 2);
+scene.add(dir);
+const fill = new THREE.DirectionalLight(0xbbb8ff, 0.4);
+fill.position.set(-2, 1, -2);
+scene.add(fill);
+
+// ---------- Botón AR ----------
+const arButton = ARButton.createButton(renderer, {
+  requiredFeatures: ['hit-test'],
+  optionalFeatures: ['dom-overlay'],
+  domOverlay: { root: document.body }
+});
+arButton.id = 'ARButton';
+arButton.textContent = '✨ Entrar en AR';
+document.body.appendChild(arButton);
+
+const statusEl = document.getElementById('status');
+function setStatus(msg, show = true) {
+  statusEl.textContent = msg;
+  statusEl.style.display = show ? 'block' : 'none';
+}
+
+// ---------- Retícula ----------
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color: 0xe0aaff, transparent: true, opacity: 0.9 })
+);
+reticle.matrixAutoUpdate = false;
+reticle.visible = false;
+scene.add(reticle);
+
+// ---------- Partículas de materialización ----------
+function createParticles() {
+  const N = 260;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N*3);
+  const seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = Math.random()*Math.PI*2;
+    const r = 0.15 + Math.random()*0.45;
+    pos[i*3] = Math.cos(a)*r;
+    pos[i*3+1] = Math.random()*1.75;
+    pos[i*3+2] = Math.sin(a)*r;
+    seed[i] = Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uTime: { value: 0 }, uProgress: { value: 0 } },
+    vertexShader: `
+      attribute float aSeed;
+      uniform float uTime, uProgress;
+      varying float vAlpha;
+      void main() {
+        vec3 p = position;
+        float t = uTime*0.8 + aSeed*6.283;
+        p.y = mod(p.y + uTime*0.35*(0.5+aSeed), 1.8);
+        p.x += sin(t)*0.03; p.z += cos(t*1.3)*0.03;
+        vAlpha = (1.0 - p.y/1.9) * uProgress;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = (4.0 + aSeed*6.0) * (1.0/-mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      varying float vAlpha;
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        if (d > 0.5) discard;
+        gl_FragColor = vec4(0.85, 0.65, 1.0, vAlpha*(1.0-d*2.0));
+      }`
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.visible = false;
+  return pts;
+}
+const particles = createParticles();
+scene.add(particles);
+
+// ---------- Carga del modelo ----------
+const draco = new DRACOLoader().setDecoderPath('./lib/draco/');
+const loader = new GLTFLoader().setDRACOLoader(draco);
+
+let woman = null;
+let modelReady = false;
+
+// Cargamos el escaneo optimizado (más fiel visualmente)
+loader.load('./woman-scan.glb', (gltf) => {
+  woman = gltf.scene;
+  woman.visible = false;
+  woman.traverse(o => {
+    if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; }
+  });
+  scene.add(woman);
+  modelReady = true;
+  setStatus('Lista ✓ — pulsa Entrar en AR');
+  setTimeout(() => setStatus('', false), 2500);
+}, undefined, (err) => {
+  console.error(err);
+  setStatus('Error cargando modelo');
+});
+
+setStatus('Cargando modelo...');
+
+// Sombra circular bajo el modelo
+const shadowDisc = new THREE.Mesh(
+  new THREE.CircleGeometry(0.35, 32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+);
+shadowDisc.visible = false;
+scene.add(shadowDisc);
+
+// ---------- Audio: tono de materialización ----------
+let audioCtx = null;
+function shimmer() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t0 = audioCtx.currentTime;
+  for (let i = 0; i < 5; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 600 + i*220 + Math.random()*80;
+    gain.gain.setValueAtTime(0.0001, t0 + i*0.09);
+    gain.gain.exponentialRampToValueAtTime(0.06, t0 + i*0.09 + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + i*0.09 + 0.5);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0 + i*0.09); osc.stop(t0 + i*0.09 + 0.6);
+  }
+}
+
+// ---------- WebXR hit-test ----------
+let hitTestSource = null, hitTestSourceRequested = false;
+const clock = new THREE.Clock();
+
+const state = {
+  home: new THREE.Vector3(),
+  placed: false,
+  materialize: 0,        // 0→1 progreso de materialización
+  lookYaw: 0,
+  blinkT: 3
+};
+
+function place(mat4) {
+  if (!modelReady) return;
+  const pos = new THREE.Vector3().setFromMatrixPosition(mat4);
+  woman.position.copy(pos);
+  state.home.copy(pos);
+  shadowDisc.position.copy(pos).y += 0.005;
+  state.placed = true;
+  state.materialize = 0;
+  woman.visible = true;
+  shadowDisc.visible = true;
+  particles.position.copy(pos);
+  particles.visible = true;
+  shimmer();
+}
+
+const controller = renderer.xr.getController(0);
+controller.addEventListener('select', () => { if (reticle.visible) place(reticle.matrix); });
+scene.add(controller);
+
+// ---------- Bucle ----------
+renderer.setAnimationLoop((ts, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (frame) {
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+    if (!hitTestSourceRequested) {
+      session.requestReferenceSpace('viewer').then(vs => {
+        session.requestHitTestSource({ space: vs }).then(src => { hitTestSource = src; });
+      });
+      session.addEventListener('end', () => { hitTestSourceRequested = false; hitTestSource = null; });
+      hitTestSourceRequested = true;
+    }
+    if (hitTestSource) {
+      const hits = frame.getHitTestResults(hitTestSource);
+      if (hits.length) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
+        const pulse = 1 + 0.1*Math.sin(t*5);
+        reticle.matrix.elements[0] *= pulse;
+        reticle.matrix.elements[10] *= pulse;
+      } else reticle.visible = false;
+    }
+  }
+
+  if (state.placed && woman) {
+    // Materialización progresiva
+    if (state.materialize < 1) {
+      state.materialize = Math.min(1, state.materialize + dt*0.8);
+      const p = state.materialize;
+      woman.traverse(o => {
+        if (o.isMesh) {
+          o.material.transparent = p < 1;
+          o.material.opacity = p;
+        }
+      });
+      particles.material.uniforms.uProgress.value = Math.sin(p*Math.PI);
+      if (p >= 1) particles.visible = false;
+    }
+    particles.material.uniforms.uTime.value = t;
+
+    // Mirar al usuario (yaw suave)
+    const camPos = new THREE.Vector3();
+    camera.getWorldPosition(camPos);
+    const toUser = new THREE.Vector3().subVectors(camPos, woman.position);
+    toUser.y = 0;
+    const dist = toUser.length();
+    if (dist > 0.01) {
+      const desired = Math.atan2(toUser.x, toUser.z);
+      let diff = desired - state.lookYaw;
+      while (diff > Math.PI) diff -= 2*Math.PI;
+      while (diff < -Math.PI) diff += 2*Math.PI;
+      // más receptiva cuando estás cerca, perezosa cuando lejos
+      const speed = dist < 1.5 ? 2.5 : 0.9;
+      state.lookYaw += THREE.MathUtils.clamp(diff, -speed*dt, speed*dt);
+      woman.rotation.y = state.lookYaw;
+    }
+
+    // Respiración sutil (escala Y) + balanceo
+    const breathe = 1 + Math.sin(t*1.4)*0.004;
+    woman.scale.set(1, breathe, 1);
+    woman.rotation.z = Math.sin(t*0.6)*0.008;
+
+    // Parpadeo de emisividad (vida) — muy sutil con la luz
+    state.blinkT -= dt;
+    if (state.blinkT <= 0) state.blinkT = 2.5 + Math.random()*3;
+
+    // Sombra
+    shadowDisc.position.x = woman.position.x;
+    shadowDisc.position.z = woman.position.z;
+  }
+
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

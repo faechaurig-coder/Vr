@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Luna — Acompañante AR</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(160deg,#0a0a1a 0%,#1a1a3e 50%,#2d1b4e 100%);
+    color:#fff; min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:20px;
+  }
+  h1 { font-size:2em; background:linear-gradient(90deg,#ff6b9d,#c44dff,#6bcbff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:6px; }
+  .subtitle { color:#a8a8d8; margin-bottom:14px; }
+  .card {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12);
+    border-radius:20px; padding:20px 24px; max-width:560px; margin:10px 0;
+    backdrop-filter:blur(12px);
+  }
+  .card h2 { color:#ff9de2; font-size:1.1em; margin-bottom:10px; }
+  .card ol { text-align:left; padding-left:22px; line-height:1.85; color:#d0d0ee; font-size:0.95em; }
+  #status {
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.75); padding:10px 20px; border-radius:24px;
+    font-size:14px; display:none; z-index:300; border:1px solid rgba(255,255,255,0.2);
+    max-width:90vw;
+  }
+  #ARButton {
+    position:fixed !important; bottom:24px !important; left:50% !important;
+    transform:translateX(-50%) !important; padding:16px 48px !important;
+    font-size:18px !important; font-weight:bold !important; border-radius:40px !important;
+    border:none !important; background:linear-gradient(135deg,#ff6b9d,#c44dff) !important;
+    color:white !important; cursor:pointer !important; z-index:250 !important;
+    box-shadow:0 6px 28px rgba(255,107,157,0.45) !important;
+  }
+  /* Barra de controles (visible dentro de AR como overlay) */
+  #hud {
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+    display:flex; gap:10px; z-index:260;
+  }
+  .hbtn {
+    background:rgba(20,20,40,0.85); border:1px solid rgba(255,157,226,0.5);
+    color:#ffb8e3; padding:12px 18px; border-radius:14px; cursor:pointer;
+    font-size:15px; backdrop-filter:blur(8px); user-select:none;
+  }
+  .hbtn:active { background:rgba(255,107,157,0.35); }
+  .hbtn.listening { border-color:#6bff9d; color:#6bff9d; animation:micpulse 1.3s ease-out infinite; }
+  @keyframes micpulse {
+    0%   { box-shadow:0 0 0 0 rgba(107,255,157,0.55); }
+    100% { box-shadow:0 0 0 16px rgba(107,255,157,0); }
+  }
+  @keyframes arpulse {
+    0%,100% { box-shadow:0 6px 28px rgba(255,107,157,0.45); }
+    50%     { box-shadow:0 6px 42px rgba(255,107,157,0.85); }
+  }
+  #ARButton { animation:arpulse 2.4s ease-in-out infinite; }
+  #studio {
+    position:fixed; right:0; top:0; height:100vh; width:320px;
+    background:rgba(10,10,26,0.94); backdrop-filter:blur(16px);
+    border-left:1px solid rgba(255,255,255,0.12); padding:18px;
+    transform:translateX(105%); transition:transform 0.35s ease; z-index:400;
+    overflow-y:auto;
+  }
+  #studio.open { transform:translateX(0); }
+  #studio h3 { color:#ff9de2; margin-bottom:14px; font-size:1.05em; }
+  .section-label { font-size:0.78em; color:#a8a8d8; margin:14px 0 8px; text-transform:uppercase; letter-spacing:1px; }
+  .swatch-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .swatch { width:100%; aspect-ratio:1; border-radius:10px; cursor:pointer; border:2px solid transparent; }
+  .swatch.active { border-color:#ff6b9d; box-shadow:0 0 10px rgba(255,107,157,0.5); }
+  .char-btn {
+    display:block; width:100%; margin:6px 0; padding:12px; border-radius:12px;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15);
+    color:#fff; cursor:pointer; font-size:14px; text-align:left;
+  }
+  .char-btn.active { border-color:#ff6b9d; background:rgba(255,107,157,0.18); }
+  #errlog { white-space:pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>✨ Luna — Acompañante AR</h1>
+  <p class="subtitle">Personaje 3D real que camina, te mira y habla contigo</p>
+
+  <div class="card">
+    <h2>🎮 Controles</h2>
+    <ol>
+      <li><b>Colocar:</b> apunta al suelo, espera el anillo rosa, aprieta el gatillo</li>
+      <li><b>Caminar hasta un punto:</b> toca otro lugar del suelo y caminará hasta ahí 🚶</li>
+      <li><b>Hablar:</b> pulsa 🎤 Hablar y dile cómo te sientes</li>
+      <li><b>Comandos:</b> "ven", "baila", "hola", "estoy triste", "siéntate"</li>
+      <li><b>Studio 🎨:</b> cambia de personaje, piel, cabello y ropa</li>
+    </ol>
+  </div>
+
+  <div id="status"></div>
+  <div id="debugInfo" style="display:none;position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:10px;border-radius:6px;max-width:320px;max-height:50vh;overflow:auto;z-index:9999;"></div>
+  <div id="hud">
+    <button class="hbtn" id="btnMic">🎤 Hablar</button>
+    <button class="hbtn" id="btnCome">📣 Ven</button>
+    <button class="hbtn" id="btnPose">🧍 Pose</button>
+    <button class="hbtn" id="btnStudio">🎨 Studio</button>
+  </div>
+
+  <div id="studio">
+    <h3>🎨 Studio</h3>
+    <div class="section-label">Personaje</div>
+    <button class="char-btn" data-char="valentina_real">⭐ Valentina Real — tu FBX de Mixamo</button>
+    <button class="char-btn active" data-char="valentina">💃 Valentina — camina, baila samba</button>
+    <button class="char-btn" data-char="sofia">👱‍♀️ Sofía — avatar detallado, 67 huesos</button>
+    <button class="char-btn" data-char="polly">🕺 Polly — baila hip-hop</button>
+    <button class="char-btn" data-char="michelle">💃 Michelle — samba</button>
+    <button class="char-btn" data-char="luna">👩 Luna — escaneo fotorrealista</button>
+    <button class="char-btn" data-char="robot">🤖 Bolt — robot, 14 animaciones</button>
+    <button class="char-btn" data-char="xbot">🧍 Robbie — humanoide expresivo</button>
+    <button class="char-btn" data-char="soldier">🪖 Alex — soldado</button>
+    <div class="section-label">Escala del personaje</div>
+    <div class="swatch-grid" id="scaleSwatches">
+      <div class="swatch" data-scale="0.5" style="background:#334;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">50%</div>
+      <div class="swatch" data-scale="0.75" style="background:#445;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">75%</div>
+      <div class="swatch active" data-scale="1" style="background:#556;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">100%</div>
+      <div class="swatch" data-scale="1.5" style="background:#667;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">150%</div>
+    </div>
+    <div class="section-label">Accesorios (personajes con rig)</div>
+    <div class="swatch-grid" id="accSwatches">
+      <div class="swatch" data-acc="none" style="background:#333;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center">Sin</div>
+      <div class="swatch" data-acc="hat" style="background:#8b5a2b;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center">🎩</div>
+      <div class="swatch" data-acc="glasses" style="background:#222;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center">🕶️</div>
+      <div class="swatch" data-acc="crown" style="background:#d4a017;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center">👑</div>
+    </div>
+    <div class="section-label">Tono de piel (Luna)</div>
+    <div class="swatch-grid" id="skinSwatches">
+      <div class="swatch active" data-c="#f1c27d" style="background:#f1c27d"></div>
+      <div class="swatch" data-c="#ffdbac" style="background:#ffdbac"></div>
+      <div class="swatch" data-c="#e0ac69" style="background:#e0ac69"></div>
+      <div class="swatch" data-c="#c68642" style="background:#c68642"></div>
+      <div class="swatch" data-c="#8d5524" style="background:#8d5524"></div>
+      <div class="swatch" data-c="#5c3a1e" style="background:#5c3a1e"></div>
+      <div class="swatch" data-c="#3d2314" style="background:#3d2314"></div>
+      <div class="swatch" data-c="#ffe0d0" style="background:#ffe0d0"></div>
+    </div>
+    <div class="section-label">Cabello</div>
+    <div class="swatch-grid" id="hairSwatches">
+      <div class="swatch active" data-c="#3b2314" style="background:#3b2314"></div>
+      <div class="swatch" data-c="#1a1a1a" style="background:#1a1a1a"></div>
+      <div class="swatch" data-c="#8b5a2b" style="background:#8b5a2b"></div>
+      <div class="swatch" data-c="#d4a574" style="background:#d4a574"></div>
+      <div class="swatch" data-c="#e8c07d" style="background:#e8c07d"></div>
+      <div class="swatch" data-c="#c41e3a" style="background:#c41e3a"></div>
+      <div class="swatch" data-c="#7b68ee" style="background:#7b68ee"></div>
+      <div class="swatch" data-c="#ff69b4" style="background:#ff69b4"></div>
+    </div>
+  </div>
+
+<script>
+// Registro de errores visible
+window.addEventListener('error', (e) => {
+  let d = document.getElementById('errlog');
+  if (!d) {
+    d = document.createElement('div');
+    d.id = 'errlog';
+    d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#a00;color:#fff;padding:10px;font-size:12px;z-index:9999;text-align:left;max-height:40vh;overflow:auto;';
+    document.body.appendChild(d);
+  }
+  d.textContent += '❌ ' + (e.message || e.type) + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno + '\n';
+});
+window.addEventListener('unhandledrejection', (e) => {
+  let d = document.getElementById('errlog');
+  if (d) d.textContent += '❌ Promise: ' + (e.reason?.message || e.reason) + '\n';
+});
+</script>
+
+<script src="./config.js" onerror="console.warn('config.js no encontrado')"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from './lib/webxr/ARButton.js';
+import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
+import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
+
+// ============ CONFIG ============
+// La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
+const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+const DEBUG_MODE = new URLSearchParams(location.search).has('debug');
+if (DEBUG_MODE) {
+  const dbg = document.getElementById('debugInfo');
+  if (dbg) dbg.style.display = 'block';
+  window._dbgLog = (msg) => {
+    if (!dbg) return;
+    dbg.innerHTML += msg + '<br>';
+    dbg.scrollTop = dbg.scrollHeight;
+  };
+  window._dbgLog('DEBUG ON');
+  window.addEventListener('error', e => window._dbgLog('ERR: '+e.message));
+}
+
+const CHARACTERS = {
+  valentina_real:{ url:'./valentina_real-opt.glb', name:'Valentina Real', rigged:true, h:1.70, rigType:'mixamo2', retarget:true,
+             anims:{ idle:'Idle', walk:'Walking', dance:'Samba', walkBack:'WalkingBack' } },
+  valentina:{ url:'./hvgirl-fixed.glb', name:'Valentina (low-poly)', rigged:true, h:1.70, rigType:'mixamo',
+             anims:{ idle:'Idle', walk:'Walking', dance:'Samba', walkBack:'WalkingBack' } },
+  sofia:   { url:'./brunette-opt.glb', name:'Sofía', rigged:true, h:1.70, rigType:'plain', retarget:true,
+             anims:{ idle:'Idle', walk:'Walking', dance:'Samba', walkBack:'WalkingBack' } },
+  polly:   { url:'./lowpoly-opt.glb', name:'Polly', rigged:true, h:1.75, rigType:'mixamo',
+             anims:{ idle:'idle', dance:'hiphop', chicken:'chicken', pockets:'pockets' } },
+  michelle:{ url:'./michelle-opt.glb', name:'Michelle', rigged:true, h:1.70, rigType:'mixamo',
+             anims:{ dance:'SambaDance', idle:'TPose' } },
+  luna:    { url:'./woman-scan.glb', name:'Luna (escaneo)', rigged:false, h:1.68 },
+  robot:   { url:'./robot.glb',    name:'Bolt',   rigged:true,  h:1.55, rigType:'blender',
+             anims:{ idle:'Idle', walk:'Walking', run:'Running', dance:'Dance', wave:'Wave',
+                     jump:'Jump', yes:'Yes', no:'No', sit:'Sitting', punch:'Punch', thumbs:'ThumbsUp' } },
+  xbot:    { url:'./xbot-opt.glb',   name:'Robbie', rigged:true,  h:1.70, rigType:'mixamo',
+             anims:{ idle:'idle', walk:'walk', run:'run', wave:'agree', sad:'sad_pose', no:'headShake', sneak:'sneak_pose' } },
+  soldier: { url:'./soldier-opt.glb', name:'Alex',  rigged:true,  h:1.70, rigType:'mixamo',
+             anims:{ idle:'Idle', walk:'Walk', run:'Run' } }
+};
+
+// ============ STATE ============
+const state = {
+  charKey: 'valentina',
+  placed: false,
+  materialize: 0,
+  lookYaw: 0,
+  mood: 'neutral',
+  lastInteraction: 0,
+  touchCooldown: 0,
+  skinColor: 0xf1c27d,
+  hairColor: 0x3b2314,
+  gesture: null, gestureT: 0,
+  mode: 'idle',          // idle | walkTo | pose
+  walkTarget: new THREE.Vector3(),
+  speaking: false, listening: false,
+  skinTone: 0xf1c27d,
+  poseMode: false,
+  grabbedChain: null     // cadena de huesos actualmente agarrada
+};
+
+// ============ THREE SETUP ============
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 30);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8d7b68, 1.1);
+scene.add(hemi);
+const keyLight = new THREE.DirectionalLight(0xfff5e6, 1.6);
+keyLight.position.set(2, 4, 2);
+scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0x9d7bff, 0.5);
+rimLight.position.set(-2, 1, -2);
+scene.add(rimLight);
+// Relleno frontal suave para iluminar la cara del personaje
+const fillLight = new THREE.DirectionalLight(0xcfe8ff, 0.4);
+fillLight.position.set(0, 1.2, 3.5);
+scene.add(fillLight);
+
+// ============ UI ============
+const statusEl = document.getElementById('status');
+function setStatus(msg, timeout=3000) {
+  statusEl.textContent = msg;
+  statusEl.style.display = msg ? 'block' : 'none';
+  if (timeout) setTimeout(() => { if (statusEl.textContent === msg) statusEl.style.display='none'; }, timeout);
+}
+
+document.getElementById('btnStudio').onclick = () => toggleStudio();
+function toggleStudio(force) {
+  const el = document.getElementById('studio');
+  if (force === true) el.classList.add('open');
+  else if (force === false) el.classList.remove('open');
+  else el.classList.toggle('open');
+}
+
+// ============ MENÚ CON JOYSTICK + BOTÓN B (Quest) ============
+// Usamos renderer.xr.getController que ya sabemos que funciona
+const xrControllerRight = renderer.xr.getController(0);
+let _menuCooldown = 0;
+let _menuSession = null;
+
+renderer.xr.addEventListener('sessionstart', () => { _menuSession = renderer.xr.getSession(); });
+renderer.xr.addEventListener('sessionend', () => { _menuSession = null; });
+
+function pollXRMenuButton() {
+  if (DEBUG_MODE && Math.random() < 0.01) {
+    const ns = _menuSession ? _menuSession.inputSources.length : 'no-session';
+    window._dbgLog('poll: session='+ns);
+  }
+  if (!_menuSession || !_menuSession.inputSources) return;
+  for (const src of _menuSession.inputSources) {
+    const gp = src.gamepad;
+    if (!gp) continue;
+    // botón B/A = index 4 en Oculus Touch
+    const bPressed = gp.buttons[4] && gp.buttons[4].pressed;
+    // eje Y del joystick (axes[3] = thumbstick Y en Oculus Touch)
+    const stickY = gp.axes[3] || 0;
+    if (bPressed && _menuCooldown <= 0) {
+      if (DEBUG_MODE) window._dbgLog('B PRESSED');
+      toggleStudio();
+      setStatus('🎮 Menú Studio');
+      _menuCooldown = 0.5;
+    }
+    // joystick derecho arriba/abajo para scroll del menú cuando está abierto
+    const studio = document.getElementById('studio');
+    if (studio.classList.contains('open') && Math.abs(stickY) > 0.5) {
+      studio.scrollTop += stickY * 14;
+    }
+  }
+}
+document.getElementById('btnMic').onclick = (e) => { e.stopPropagation(); startListening(); };
+document.getElementById('btnCome').onclick = () => comeToMe();
+
+// ============ AR BUTTON ============
+const arButton = ARButton.createButton(renderer, {
+  requiredFeatures: ['hit-test'],
+  optionalFeatures: ['dom-overlay', 'light-estimation'],
+  domOverlay: { root: document.body }
+});
+arButton.id = 'ARButton';
+arButton.textContent = '✨ Entrar en AR';
+document.body.appendChild(arButton);
+
+// Light estimation: sincronizar la luz del personaje con tu habitación real
+renderer.xr.addEventListener('sessionstart', () => {
+  const session = renderer.xr.getSession();
+  if (session && session.requestLightProbe) {
+    session.requestLightProbe().then(probe => {
+      lightProbe = probe;
+      lightAvailable = true;
+      setStatus('💡 Luz adaptada a tu habitación');
+    }).catch(() => { lightAvailable = false; });
+  }
+});
+renderer.xr.addEventListener('sessionend', () => { lightProbe = null; lightAvailable = false; });
+
+if (!navigator.xr) {
+  setStatus('⚠️ WebXR no disponible en este navegador', 0);
+} else {
+  navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    if (!ok) setStatus('⚠️ AR no soportado — usa el navegador de Meta Quest', 0);
+  }).catch(()=>{});
+}
+
+renderer.xr.addEventListener('sessionstart', () => setStatus('Apunta al suelo y toca para colocarla'));
+renderer.xr.addEventListener('sessionend', () => setStatus('Sesión AR terminada'));
+
+// ============ RETICLE ============
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color:0xff9de2, transparent:true, opacity:0.9 })
+);
+reticle.matrixAutoUpdate = false;
+reticle.visible = false;
+scene.add(reticle);
+
+// ============ PARTICLES ============
+const particles = (() => {
+  const N = 350;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N*3), seed = new Float32Array(N);
+  for (let i=0;i<N;i++) {
+    const a = Math.random()*Math.PI*2, r = 0.1+Math.random()*0.5;
+    pos[i*3]=Math.cos(a)*r; pos[i*3+1]=Math.random()*1.75; pos[i*3+2]=Math.sin(a)*r;
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+  const mat = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    uniforms:{ uTime:{value:0}, uProgress:{value:0} },
+    vertexShader:`
+      attribute float aSeed; uniform float uTime,uProgress; varying float vA;
+      void main(){
+        vec3 p=position; float t=uTime*0.9+aSeed*6.283;
+        p.y=mod(p.y+uTime*0.4*(0.5+aSeed),1.8);
+        p.x+=sin(t)*0.04; p.z+=cos(t*1.3)*0.04;
+        vA=(1.0-p.y/1.9)*uProgress;
+        vec4 mv=modelViewMatrix*vec4(p,1.0);
+        gl_PointSize=(3.0+aSeed*5.0)*(1.0/-mv.z);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      varying float vA;
+      void main(){
+        float d=length(gl_PointCoord-0.5); if(d>0.5)discard;
+        gl_FragColor=vec4(1.0,0.62,0.9,vA*(1.0-d*2.0));
+      }`
+  });
+  const pts = new THREE.Points(geo,mat);
+  pts.visible=false;
+  scene.add(pts);
+  return pts;
+})();
+
+// ============ SOMBRA DE CONTACTO (gradiente radial suave) ============
+function radialShadowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,   'rgba(0,0,0,0.60)');
+  g.addColorStop(0.45,'rgba(0,0,0,0.30)');
+  g.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,256,256);
+  const tex = new THREE.CanvasTexture(c);
+  return tex;
+}
+const shadowDisc = new THREE.Mesh(
+  new THREE.CircleGeometry(0.42, 48).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ map:radialShadowTexture(), transparent:true, depthWrite:false })
+);
+shadowDisc.visible = false;
+scene.add(shadowDisc);
+
+// ============ HALO DE LUZ (presencia cálida en el suelo) ============
+function radialGlowTexture(r,g2,b) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const grd = ctx.createRadialGradient(128,128,0,128,128,128);
+  grd.addColorStop(0,  `rgba(${r},${g2},${b},0.55)`);
+  grd.addColorStop(0.5,`rgba(${r},${g2},${b},0.18)`);
+  grd.addColorStop(1,  `rgba(${r},${g2},${b},0)`);
+  ctx.fillStyle = grd; ctx.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+}
+const halo = new THREE.Mesh(
+  new THREE.CircleGeometry(0.65, 48).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({
+    map:radialGlowTexture(255,170,120), transparent:true, opacity:0.14,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  })
+);
+halo.visible = false;
+scene.add(halo);
+
+let lightProbe = null;      // WebXR light estimation
+let lightAvailable = false;
+
+// ============ ONDA EXPANSIVA + FLASH (efecto de aparición) ============
+const shockwave = new THREE.Mesh(
+  new THREE.RingGeometry(0.85, 1.0, 64).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({
+    color:0xffb8e3, transparent:true, opacity:0, depthWrite:false,
+    blending:THREE.AdditiveBlending, side:THREE.DoubleSide
+  })
+);
+shockwave.visible = false;
+scene.add(shockwave);
+const flash = new THREE.PointLight(0xffd9ec, 0, 3.5);
+scene.add(flash);
+let shockT = -1;   // progreso de la onda (0..1) o -1 inactiva
+
+// ============ POLVO AMBIENTAL (partículas doradas persistentes) ============
+const dust = (() => {
+  const N = 220;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N*3), seed = new Float32Array(N);
+  for (let i=0;i<N;i++) {
+    const a = Math.random()*Math.PI*2, r = 0.3+Math.random()*1.1;
+    pos[i*3]=Math.cos(a)*r; pos[i*3+1]=Math.random()*2.1; pos[i*3+2]=Math.sin(a)*r;
+    seed[i]=Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+  const mat = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    uniforms:{ uTime:{value:0}, uAlpha:{value:0.28} },
+    vertexShader:`
+      attribute float aSeed; uniform float uTime; varying float vA;
+      void main(){
+        vec3 p=position; float t=uTime*0.35+aSeed*6.283;
+        p.y=mod(p.y - uTime*0.03*(0.4+aSeed), 2.1);
+        p.x+=sin(t)*0.09; p.z+=cos(t*0.8)*0.09;
+        vA=(0.3+aSeed*0.7)*uAlpha;
+        vec4 mv=modelViewMatrix*vec4(p,1.0);
+        gl_PointSize=(1.5+aSeed*3.0)*(1.0/-mv.z);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      varying float vA;
+      void main(){
+        float d=length(gl_PointCoord-0.5); if(d>0.5)discard;
+        gl_FragColor=vec4(1.0,0.78,0.5,vA*(1.0-d*2.0));
+      }`
+  });
+  const pts = new THREE.Points(geo,mat);
+  pts.visible=false;
+  scene.add(pts);
+  return pts;
+})();
+
+// ============ CHARACTER LOADING ============
+const draco = new DRACOLoader().setDecoderPath('./lib/draco/');
+const loader = new GLTFLoader().setDRACOLoader(draco);
+
+// holder: pivote en los pies, centro XZ en 0 → SIEMPRE bien posicionado
+let holder = null;       // grupo que se mueve/rota
+let charRoot = null;     // modelo dentro del holder
+let mixer = null;
+let actions = {};
+let currentAction = null;
+let charHeight = 1.68;
+
+function normalizeModel(root, targetH) {
+  // Asegura matrices actualizadas
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  const s = targetH / (size.y || 1);
+  const g = new THREE.Group();
+  g.add(root);
+  root.scale.setScalar(s);
+  // Recentrar: pies en y=0, centro XZ en 0
+  root.position.x = -center.x * s;
+  root.position.z = -center.z * s;
+  root.position.y = -box.min.y * s;
+  return g;
+}
+
+// Biblioteca de clips (idle/walk/samba...) para rigs sin animaciones propias.
+// Se renombran las pistas al prefijo del rig del personaje (retarget por nombre).
+// Nota: GLTFLoader sanitiza nombres eliminando ":" → "mixamorigHips".
+// Por eso todos los prefijos se manejan sin colon.
+let animLibPromise = null;
+function getAnimLibrary() {
+  if (!animLibPromise) {
+    animLibPromise = new Promise((resolve, reject) => {
+      loader.load('./hvgirl-opt.glb', (gltf) => resolve(gltf), undefined, reject);
+    });
+  }
+  return animLibPromise;
+}
+function detectRigPrefix(root) {
+  let prefix = null;
+  root.traverse(o => {
+    if (prefix !== null) return;
+    if ((o.isBone || o.type === 'Bone') && o.name.endsWith('Hips')) {
+      prefix = o.name.slice(0, o.name.length - 4);
+    }
+  });
+  return prefix !== null ? prefix : 'mixamorig';
+}
+function retargetClips(clips, targetRoot, libRoot) {
+  const dstPrefix = detectRigPrefix(targetRoot);
+  const srcPrefix = detectRigPrefix(libRoot);
+  if (dstPrefix === srcPrefix) return clips;   // mismo rig, nada que renombrar
+  return clips.map(clip => {
+    const c = clip.clone();
+    for (const t of c.tracks) {
+      if (t.name.startsWith(srcPrefix)) t.name = dstPrefix + t.name.slice(srcPrefix.length);
+    }
+    return c;
+  });
+}
+
+async function loadCharacter(key) {
+  const cfg = CHARACTERS[key];
+  return new Promise((resolve, reject) => {
+    loader.load(cfg.url, async (gltf) => {
+      const root = gltf.scene;
+      root.traverse(o => {
+        if (o.isMesh || o.isSkinnedMesh) {
+          o.frustumCulled = false;   // evita "cara cortada" por bounding sphere vieja
+          if (o.material) {
+            // Reparar FBX convertidos que traen alpha=0 (invisible)
+            if (o.material.transparent && o.material.opacity <= 0.01) {
+              o.material.opacity = 1;
+              o.material.transparent = false;
+            }
+            if (o.material.side === undefined) o.material.side = THREE.FrontSide;
+            if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace;
+          }
+        }
+      });
+      if (DEBUG_MODE) {
+        let meshCount = 0, skinnedCount = 0, boneCount = 0;
+        root.traverse(o => {
+          if (o.isSkinnedMesh) skinnedCount++;
+          else if (o.isMesh) meshCount++;
+          else if (o.isBone) boneCount++;
+        });
+        window._dbgLog(`loaded ${key}: mesh=${meshCount} skinned=${skinnedCount} bones=${boneCount}`);
+      }
+      // Modo debug: forzar material básico para descartar problema de shaders
+      if (DEBUG_MODE && key === 'valentina_real') {
+        root.traverse(o => {
+          if (o.isSkinnedMesh) o.material = new THREE.MeshBasicMaterial({ color: 0xff44aa });
+        });
+      }
+      const g = normalizeModel(root, cfg.h);
+      let anims = gltf.animations || [];
+      if (cfg.retarget) {
+        try {
+          const lib = await getAnimLibrary();
+          const libClips = retargetClips(lib.animations || [], root, lib.scene);
+          anims = libClips.concat(anims);   // nativos tienen prioridad por nombre
+        } catch (e) { console.warn('⚠️ anim library fallo', e); }
+      }
+      let mx = null, acts = {};
+      if (anims.length) {
+        mx = new THREE.AnimationMixer(root);
+        for (const clip of anims) acts[clip.name] = mx.clipAction(clip);
+      }
+      resolve({ group:g, mixer:mx, actions:acts, cfg });
+    }, undefined, reject);
+  });
+}
+
+function playAnim(name, fade=0.3) {
+  if (!mixer || !actions[name]) return false;
+  const next = actions[name];
+  if (currentAction === next) return true;
+  next.reset().fadeIn(fade).play();
+  if (currentAction) currentAction.fadeOut(fade);
+  currentAction = next;
+  return true;
+}
+
+function animFor(logical) {
+  const map = CHARACTERS[state.charKey].anims;
+  return map ? map[logical] : null;
+}
+
+async function switchCharacter(key, keepPlace=false) {
+  if (DEBUG_MODE) window._dbgLog('switch→'+key);
+  setStatus('Cargando ' + CHARACTERS[key].name + '...');
+  const prevPos = holder ? holder.position.clone() : null;
+  const wasVisible = state.placed && keepPlace;
+  if (holder) { scene.remove(holder); }
+  accessory = null; boneMap = {};
+  mixer = null; actions = {}; currentAction = null;
+  try {
+    const res = await loadCharacter(key);
+    holder = res.group;
+    mixer = res.mixer;
+    actions = res.actions;
+    state.charKey = key;
+    charHeight = res.cfg.h;
+    holder.visible = wasVisible;
+    if (prevPos && keepPlace) holder.position.copy(prevPos);
+    scene.add(holder);
+    applyAppearance();
+    // idle inicial
+    const idleName = animFor('idle');
+    if (idleName) playAnim(idleName);
+    if (wasVisible) shadowDisc.visible = true;
+    setStatus(res.cfg.name + ' lista ✓');
+  } catch (e) {
+    console.error(e);
+    setStatus('❌ Error cargando personaje', 0);
+  }
+}
+
+// ============ APPEARANCE (Studio) ============
+function applyAppearance() {
+  if (state.charKey !== 'luna' || !holder) return;
+  // El escaneo tiene texturas: matizamos con color multiplicativo suave
+  holder.traverse(o => {
+    if (o.isMesh && o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => {
+        if (m.map) {
+          // mezcla piel
+          const c = new THREE.Color(state.skinColor);
+          m.color.copy(c.lerp(new THREE.Color(0xffffff), 0.35));
+        }
+      });
+    }
+  });
+}
+
+function bindSwatches(id, fn) {
+  document.querySelectorAll(`#${id} .swatch`).forEach(el => {
+    el.onclick = () => {
+      document.querySelectorAll(`#${id} .swatch`).forEach(s => s.classList.remove('active'));
+      el.classList.add('active');
+      fn(parseInt(el.dataset.c.replace('#','0x')));
+    };
+  });
+}
+bindSwatches('skinSwatches', c => { state.skinColor = c; applyAppearance(); });
+bindSwatches('hairSwatches', c => { state.hairColor = c; applyAppearance(); });
+
+// Escala
+document.querySelectorAll('#scaleSwatches .swatch').forEach(el => {
+  el.onclick = () => {
+    document.querySelectorAll('#scaleSwatches .swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    if (holder) holder.scale.setScalar(parseFloat(el.dataset.scale));
+  };
+});
+
+// Accesorios procedurales adjuntos al hueso de la cabeza
+let accessory = null;
+const ACCESSORY_BUILDERS = {
+  hat() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2b2b3a, roughness: 0.6 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.015, 24), mat);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.14, 24), mat);
+    top.position.y = 0.075;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.03, 24),
+      new THREE.MeshStandardMaterial({ color: 0xc44dff, roughness: 0.4 }));
+    band.position.y = 0.02;
+    g.add(brim, top, band);
+    g.position.y = 0.09;
+    return g;
+  },
+  glasses() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.7 });
+    for (const s of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.008, 8, 20), mat);
+      lens.position.x = 0.055 * s;
+      g.add(lens);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.11), mat);
+      arm.rotation.x = Math.PI/2;
+      arm.position.set(0.095 * s, 0.005, -0.05);
+      g.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.03), mat);
+    bridge.rotation.z = Math.PI/2;
+    g.add(bridge);
+    g.position.set(0, 0.03, 0.1);
+    return g;
+  },
+  crown() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.25, metalness: 0.9 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.1, 0.05, 20, 1, true), mat);
+    g.add(band);
+    for (let i = 0; i < 6; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.06, 4), mat);
+      const a = (i/6) * Math.PI * 2;
+      spike.position.set(Math.cos(a)*0.095, 0.05, Math.sin(a)*0.095);
+      g.add(spike);
+    }
+    g.position.y = 0.1;
+    return g;
+  }
+};
+
+function setAccessory(type) {
+  if (accessory) { accessory.parent?.remove(accessory); accessory = null; }
+  if (type === 'none' || !holder || !CHARACTERS[state.charKey].rigged) return;
+  if (Object.keys(boneMap).length === 0) collectBones(holder);
+  const chains = currentChains();
+  const headBone = chains ? boneMap[chains.Head.end] : null;
+  if (!headBone) return;
+  accessory = ACCESSORY_BUILDERS[type]();
+  headBone.add(accessory);
+}
+
+document.querySelectorAll('#accSwatches .swatch').forEach(el => {
+  el.onclick = () => {
+    document.querySelectorAll('#accSwatches .swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    setAccessory(el.dataset.acc);
+  };
+});
+
+document.querySelectorAll('[data-char]').forEach(btn => {
+  btn.onclick = async () => {
+    document.querySelectorAll('[data-char]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    await switchCharacter(btn.dataset.char, true);
+  };
+});
+
+// ============ VOICE ============
+const synth = window.speechSynthesis;
+let recognition = null;
+
+function speak(text, mood='neutral') {
+  if (!synth) return;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'es-ES';
+  u.rate = mood === 'sad' ? 0.9 : 0.98;
+  u.pitch = 1.05;
+  u.volume = 1;
+  const voices = synth.getVoices();
+  const v = voices.find(v => v.lang.startsWith('es') && /google/i.test(v.name)) ||
+            voices.find(v => v.lang.startsWith('es'));
+  if (v) u.voice = v;
+  state.speaking = true;
+  const btn = document.getElementById('btnMic');
+  btn.textContent = '🔊 ' + text.substring(0, 28) + (text.length>28?'…':'');
+  u.onend = () => { state.speaking = false; btn.textContent = '🎤 Hablar'; };
+  synth.speak(u);
+}
+
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  const r = new SR();
+  r.lang = 'es-ES'; r.continuous = false; r.interimResults = false;
+  return r;
+}
+recognition = initRecognition();
+if (recognition) {
+  const btn = document.getElementById('btnMic');
+  recognition.onstart = () => { state.listening = true; btn.classList.add('listening'); btn.textContent='🎤 Escuchando…'; };
+  recognition.onend = () => { state.listening = false; btn.classList.remove('listening'); if(!state.speaking) btn.textContent='🎤 Hablar'; };
+  recognition.onresult = (e) => handleUserSpeech(e.results[0][0].transcript);
+  recognition.onerror = () => {};
+}
+function startListening() {
+  if (recognition && !state.listening) {
+    try { recognition.start(); setStatus('🎤 Escuchando… habla ahora', 2000); } catch(e){}
+  } else if (!recognition) setStatus('⚠️ Voz no soportada en este navegador');
+}
+
+async function askGemini(prompt) {
+  if (!GEMINI_KEY) return fallback(prompt);   // sin key, usa respuestas locales
+  const sys = `Eres Luna, una acompañante virtual empática con formación en psicología. Cálida, atenta, profesional.
+Validas emociones, das apoyo y consejos breves de bienestar. Español, tono cercano, MÁXIMO 2 frases cortas (se hablan en voz alta). Sin markdown.
+Estado del usuario: ${state.mood}.`;
+  try {
+    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        contents:[{ parts:[{ text: sys + '\n\nUsuario: ' + prompt }] }],
+        generationConfig:{ temperature:0.8, maxOutputTokens:80 }
+      })
+    });
+    const data = await res.json();
+    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (txt) return txt;
+    throw new Error(data.error?.message || 'sin respuesta');
+  } catch(e) {
+    console.warn('Gemini:', e.message);
+    return fallback(prompt);
+  }
+}
+
+function fallback(t) {
+  t = t.toLowerCase();
+  if (/hola|hey|buenas/.test(t)) return 'Hola, qué alegría verte. ¿Cómo estás?';
+  if (/triste|mal|deprimid|ansios|estres/.test(t)) return 'Siento que estés así. Respira conmigo: inhala lento… y exhala. Estoy aquí contigo.';
+  if (/feliz|bien|genial|content/.test(t)) return '¡Me encanta! Tu energía positiva se nota.';
+  if (/baila/.test(t)) return '¡Vamos a bailar!';
+  if (/gracias/.test(t)) return 'Siempre estaré aquí para ti.';
+  if (/adiós|chao|hasta/.test(t)) return 'Hasta pronto, cuídate mucho.';
+  return 'Te escucho, cuéntame más.';
+}
+
+async function handleUserSpeech(text) {
+  state.lastInteraction = clock.elapsedTime;
+  const t = text.toLowerCase();
+  // Comandos de acción directos
+  if (/ven|acércate|acercate|venir/.test(t)) { comeToMe(); speak('Ahí voy.'); return; }
+  if (/baila/.test(t)) { doDance(); speak('¡A bailar!'); return; }
+  if (/saluda|hola/.test(t)) { doGesture('wave'); }
+  if (/salta/.test(t)) { doGesture('jump'); speak('¡Wiii!'); return; }
+  if (/siéntate|sientate|sentado/.test(t)) { doGesture('sit'); speak('Me siento un rato.'); return; }
+  if (/sí$|^sí|afirm|claro/.test(t)) { doGesture('yes'); }
+  if (/^no|negar/.test(t)) { doGesture('no'); }
+  if (/pulgar|aprueba|like/.test(t)) { doGesture('thumbs'); }
+  if (/triste|mal|deprimid/.test(t)) { state.mood='sad'; doGesture('sad'); }
+  if (/feliz|bien|genial/.test(t)) state.mood='happy';
+  const reply = await askGemini(text);
+  speak(reply, state.mood);
+}
+
+// ============ ACTIONS ============
+function comeToMe() {
+  if (!state.placed || !holder) return;
+  const camPos = new THREE.Vector3();
+  camera.getWorldPosition(camPos);
+  // Pararse a 0.9m frente al usuario
+  const dir = new THREE.Vector3().subVectors(holder.position, camPos);
+  dir.y = 0; dir.normalize();
+  state.walkTarget.copy(camPos).addScaledVector(dir, 0.9);
+  state.walkTarget.y = holder.position.y;
+  state.mode = 'walkTo';
+  const w = animFor('walk');
+  if (w) playAnim(w);
+}
+
+function doDance() {
+  const a = animFor('sneak') || animFor('walk');
+  if (a && mixer) {
+    playAnim(a, 0.2);
+    setTimeout(() => { const i = animFor('idle'); if (i) playAnim(i); }, 4000);
+  } else {
+    state.gesture = 'dance'; state.gestureT = 4;
+  }
+}
+
+function doGesture(g) {
+  const mapped = animFor(g);
+  if (mapped && actions[mapped]) {
+    playAnim(mapped, 0.2);
+    setTimeout(() => { const i = animFor('idle'); if (i) playAnim(i); }, 2500);
+  } else {
+    state.gesture = g; state.gestureT = 2;
+  }
+}
+
+// ============ PLACEMENT ============
+let hitTestSource = null, hitTestSourceRequested = false;
+const clock = new THREE.Clock();
+
+function place(mat4) {
+  if (!holder) return;
+  const pos = new THREE.Vector3().setFromMatrixPosition(mat4);
+  holder.position.copy(pos);
+  // Orientar hacia el usuario al colocar
+  const camPos = new THREE.Vector3();
+  camera.getWorldPosition(camPos);
+  state.lookYaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
+  holder.rotation.y = state.lookYaw;
+  shadowDisc.position.copy(pos).y += 0.003;
+  if (!state.placed) {
+    state.placed = true;
+    state.materialize = 0;
+    // Efecto de aparición: onda expansiva + flash
+    shockT = 0;
+    shockwave.visible = true;
+    shockwave.position.copy(pos).y += 0.005;
+    shockwave.scale.setScalar(0.05);
+    flash.position.copy(pos).y += 0.8;
+    flash.intensity = 3.2;
+  }
+  holder.visible = true;
+  shadowDisc.visible = true;
+  halo.position.copy(pos).y += 0.002;
+  halo.visible = true;
+  dust.position.copy(pos);
+  dust.visible = true;
+  particles.position.copy(pos);
+  particles.visible = true;
+  state.lastInteraction = clock.elapsedTime;
+  setTimeout(() => speak('Hola, soy ' + CHARACTERS[state.charKey].name + '. Estoy aquí contigo. ¿Cómo te sientes hoy?', 'happy'), 800);
+}
+
+const controller = renderer.xr.getController(0);
+controller.addEventListener('select', () => {
+  if (state.poseMode) return;   // en modo pose, select se usa para agarrar huesos
+  if (!reticle.visible || !holder) return;
+  if (!state.placed) {
+    place(reticle.matrix);
+  } else {
+    // Ya colocada → caminar hasta el punto
+    const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+    state.walkTarget.copy(p);
+    state.mode = 'walkTo';
+    const w = animFor('walk');
+    if (w) playAnim(w);
+  }
+});
+scene.add(controller);
+
+// ============ MAIN LOOP ============
+renderer.setAnimationLoop((ts, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (state.touchCooldown > 0) state.touchCooldown -= dt;
+  if (_menuCooldown > 0) _menuCooldown -= dt;
+  pollXRMenuButton();   // menú con botón B + joystick
+
+  // Check-in empático
+  if (state.placed && t - state.lastInteraction > 45 && !state.speaking) {
+    state.lastInteraction = t;
+    const msgs = [
+      '¿Sigues ahí? Me preocupo por ti.',
+      'Recuerda respirar profundo de vez en cuando.',
+      'Estoy aquí si necesitas hablar de algo.',
+      '¿Cómo va tu día?'
+    ];
+    speak(msgs[Math.floor(Math.random()*msgs.length)]);
+  }
+
+  if (frame) {
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+    if (!hitTestSourceRequested) {
+      session.requestReferenceSpace('viewer').then(vs => {
+        session.requestHitTestSource({ space: vs }).then(src => { hitTestSource = src; });
+      });
+      session.addEventListener('end', () => { hitTestSourceRequested = false; hitTestSource = null; });
+      hitTestSourceRequested = true;
+    }
+    if (hitTestSource) {
+      const hits = frame.getHitTestResults(hitTestSource);
+      if (hits.length) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
+      } else reticle.visible = false;
+    }
+    // ===== LIGHT ESTIMATION: luz de la habitación real =====
+    if (lightAvailable && lightProbe && frame.getLightEstimate) {
+      try {
+        const est = frame.getLightEstimate(lightProbe);
+        if (est) {
+          const dir = est.primaryLightDirection;
+          const inten = est.primaryLightIntensity;
+          if (dir && inten) {
+            // direction apunta HACIA la luz → position = dir*distancia
+            keyLight.position.set(dir.x, dir.y, dir.z).multiplyScalar(5);
+            const mag = Math.hypot(inten.x, inten.y, inten.z) || 1;
+            keyLight.intensity = THREE.MathUtils.clamp(mag*1.4, 0.6, 3.5);
+            keyLight.color.setRGB(inten.x/mag, inten.y/mag, inten.z/mag);
+          }
+        }
+      } catch (e) { /* light estimation opcional */ }
+    }
+  }
+
+  if (state.placed && holder) {
+    // Materialización
+    if (state.materialize < 1) {
+      state.materialize = Math.min(1, state.materialize + dt*0.7);
+      const p = state.materialize;
+      holder.traverse(o => {
+        if ((o.isMesh || o.isSkinnedMesh) && o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach(m => { m.transparent = p < 1; m.opacity = p; });
+        }
+      });
+      particles.material.uniforms.uProgress.value = Math.sin(p*Math.PI);
+      if (p >= 1) { particles.visible = false; }
+    }
+    particles.material.uniforms.uTime.value = t;
+    dust.material.uniforms.uTime.value = t;
+    dust.position.x = holder.position.x;
+    dust.position.z = holder.position.z;
+
+    // Onda expansiva de aparición
+    if (shockT >= 0) {
+      shockT = Math.min(1, shockT + dt*1.6);
+      shockwave.scale.setScalar(0.05 + shockT*1.3);
+      shockwave.material.opacity = 0.85 * (1 - shockT);
+      if (shockT >= 1) { shockwave.visible = false; shockT = -1; }
+    }
+    // Flash que decae
+    if (flash.intensity > 0) flash.intensity = Math.max(0, flash.intensity - dt*4.5);
+
+    // ============ ORDEN CRÍTICO: actualizar cámara ANTES de animar ============
+    // En XR, las matrices de la cámara se actualizan durante el render
+    // Necesitamos forzar la actualización para getWorldPosition
+    renderer.xr.updateCamera(camera);
+    camera.updateMatrixWorld(true);
+
+    const camPos = new THREE.Vector3();
+    camera.getWorldPosition(camPos);
+
+    // Mixer de animaciones (personajes riggeados)
+    if (mixer && state.mode !== 'pose') mixer.update(dt);
+
+    // Idle procedural para rigs sin clips (Sofía)
+    if (CHARACTERS[state.charKey].rigged && state.mode !== 'pose' &&
+        (!mixer || Object.keys(actions).length === 0)) {
+      if (Object.keys(boneMap).length === 0) collectBones(holder);
+      const spine = boneMap['mixamorig:Spine'] || boneMap['Spine'];
+      const headB = boneMap['mixamorig:Head'] || boneMap['Head'];
+      if (spine) {
+        spine.rotation.x = Math.sin(t * 1.3) * 0.015;          // respiración
+        spine.rotation.z = Math.sin(t * 0.7) * 0.01;           // sway
+      }
+      if (headB) {
+        const camPos2 = new THREE.Vector3();
+        camera.getWorldPosition(camPos2);
+        const toU = new THREE.Vector3().subVectors(camPos2, holder.position);
+        toU.y = 0;
+        if (toU.length() > 0.2) {
+          const dYaw = Math.atan2(toU.x, toU.z) - state.lookYaw;
+          let dd = dYaw;
+          while (dd > Math.PI) dd -= 2*Math.PI;
+          while (dd < -Math.PI) dd += 2*Math.PI;
+          headB.rotation.y += (THREE.MathUtils.clamp(dd, -0.6, 0.6) - headB.rotation.y) * Math.min(1, dt*4);
+        }
+      }
+    }
+
+    // ===== MODO POSE: IK mientras arrastras =====
+    if (state.poseMode && state.grabbedChain) {
+      const chain = state.grabbedChain;
+      const rootB = boneMap[chain.root], endB = boneMap[chain.end];
+      if (rootB && endB) {
+        const target = new THREE.Vector3();
+        controller.getWorldPosition(target);
+        // Pole: detrás del personaje (para codo/rodilla natural)
+        const pole = target.clone();
+        const back = new THREE.Vector3(0,0,-0.5).applyQuaternion(
+          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, state.lookYaw, 0))
+        );
+        pole.add(back);
+        if (chain.key.includes('Leg')) pole.y -= 0.3;
+        if (chain.mid) {
+          const midB = boneMap[chain.mid];
+          if (midB) solveTwoBoneIK(rootB, midB, endB, target, pole);
+        } else {
+          // Cabeza: orientar hacia el objetivo
+          endB.parent?.getWorldQuaternion(_tmpQ1);
+          const ePos = endB.getWorldPosition(_tmpV1);
+          const lookM = _tmpM1.lookAt(ePos, target, _up);
+          const desired = _tmpQ2.setFromRotationMatrix(lookM);
+          endB.parent.worldToLocal(_tmpV2.copy(target));
+          endB.lookAt(target);
+        }
+      }
+    }
+    if (state.poseMode) updatePoseHandles();
+
+    // Caminar hacia objetivo
+    if (state.mode === 'walkTo') {
+      const to = new THREE.Vector3().subVectors(state.walkTarget, holder.position);
+      to.y = 0;
+      const dist = to.length();
+      if (dist < 0.08) {
+        state.mode = 'idle';
+        const i = animFor('idle'); if (i) playAnim(i);
+      } else {
+        to.normalize();
+        const desired = Math.atan2(to.x, to.z);
+        let diff = desired - state.lookYaw;
+        while (diff > Math.PI) diff -= 2*Math.PI;
+        while (diff < -Math.PI) diff += 2*Math.PI;
+        state.lookYaw += THREE.MathUtils.clamp(diff, -4*dt, 4*dt);
+        const speed = 0.55;
+        holder.position.x += Math.sin(state.lookYaw)*speed*dt;
+        holder.position.z += Math.cos(state.lookYaw)*speed*dt;
+      }
+    } else {
+      // Mirar al usuario cuando está quieto
+      const toUser = new THREE.Vector3().subVectors(camPos, holder.position);
+      toUser.y = 0;
+      const dist = toUser.length();
+      if (dist > 0.2 && dist < 6) {
+        const desired = Math.atan2(toUser.x, toUser.z);
+        let diff = desired - state.lookYaw;
+        while (diff > Math.PI) diff -= 2*Math.PI;
+        while (diff < -Math.PI) diff += 2*Math.PI;
+        const speed = dist < 1.5 ? 1.8 : 0.7;
+        state.lookYaw += THREE.MathUtils.clamp(diff, -speed*dt, speed*dt);
+      }
+    }
+    holder.rotation.y = state.lookYaw;
+
+    // Respiración/gestos para el escaneo (no riggeado)
+    if (!CHARACTERS[state.charKey].rigged) {
+      updateLunaProcedural(dt, t, camPos);
+    }
+
+    // Sombra y halo siguen al personaje
+    shadowDisc.position.x = holder.position.x;
+    shadowDisc.position.z = holder.position.z;
+    halo.position.x = holder.position.x;
+    halo.position.z = holder.position.z;
+    halo.material.opacity = 0.10 + Math.sin(t*1.8)*0.035;   // pulsación suave
+  }
+
+  renderer.render(scene, camera);
+});
+
+// ============ LUNA PROCEDURAL ANIMATION ============
+let lunaMeshes = null;
+let lunaOriginal = null;
+
+function initLunaProcedural() {
+  if (!holder) return;
+  lunaMeshes = [];
+  holder.traverse(o => {
+    if (o.isMesh && o.geometry) {
+      const geo = o.geometry;
+      const pos = geo.attributes.position;
+      // Guardar posiciones originales
+      const orig = new Float32Array(pos.array);
+      lunaMeshes.push({ mesh: o, geo, pos, orig, count: pos.count });
+    }
+  });
+}
+
+function updateLunaProcedural(dt, t, camPos) {
+  if (!lunaMeshes) initLunaProcedural();
+  if (!lunaMeshes) return;
+
+  // NOTA: los vértices de Luna están en espacio Z-up (altura = Z, 0→1.71)
+  //       y centrados en X≈0.2 (por la traslación horneada)
+
+  const breathe = Math.sin(t * 1.3) * 0.008;
+
+  // Balanceo al caminar
+  if (state.mode === 'walkTo') {
+    state.walkPhase = (state.walkPhase || 0) + dt * 7;
+    holder.rotation.z = Math.sin(state.walkPhase) * 0.05;
+  } else {
+    holder.rotation.z *= Math.max(0, 1 - dt * 6);
+  }
+
+  // Head tracking (mirar al usuario)
+  const toUser = new THREE.Vector3().subVectors(camPos, holder.position);
+  toUser.y = 0;
+  const dist = toUser.length();
+  let targetHeadYaw = 0, targetHeadPitch = 0;
+  if (dist > 0.01) {
+    const desiredYaw = Math.atan2(toUser.x, toUser.z);
+    let diff = desiredYaw - state.lookYaw;
+    while (diff > Math.PI) diff -= 2*Math.PI;
+    while (diff < -Math.PI) diff += 2*Math.PI;
+    targetHeadYaw = THREE.MathUtils.clamp(diff * 0.55, -0.55, 0.55);
+    targetHeadPitch = THREE.MathUtils.clamp((camPos.y - 1.5) * 0.35, -0.3, 0.3);
+  }
+  state.headYaw = (state.headYaw || 0) + (targetHeadYaw - (state.headYaw || 0)) * Math.min(1, dt*4);
+  state.headPitch = (state.headPitch || 0) + (targetHeadPitch - (state.headPitch || 0)) * Math.min(1, dt*4);
+
+  // Gestos
+  let rightArmRaise = 0;
+  if (state.gesture === 'wave' && state.gestureT > 0) {
+    state.gestureT -= dt;
+    rightArmRaise = Math.min(1, (2 - state.gestureT)) * (Math.sin(state.gestureT * 7) * 0.35 + 0.65);
+  }
+  let danceSwing = 0;
+  if (state.gesture === 'dance' && state.gestureT > 0) {
+    state.gestureT -= dt;
+    danceSwing = Math.sin(t * 5) * 0.12;
+  }
+
+  // === Deformación de vértices (espacio local Z-up) ===
+  // Altura cabeza: z local ≈ 1.4-1.71, pivot cuello z=1.45, x=0.2
+  const hy = state.headYaw, hp = state.headPitch;
+  const cy = Math.cos(hy), sy = Math.sin(hy);
+  const cp = Math.cos(hp), sp = Math.sin(hp);
+
+  for (const m of lunaMeshes) {
+    const pos = m.pos.array;
+    const orig = m.orig;
+    const n = m.count;
+
+    for (let i = 0; i < n; i++) {
+      const ox = orig[i*3];
+      const oy = orig[i*3+1];
+      const oz = orig[i*3+2];   // z local = ALTURA (0→1.71)
+
+      let x = ox, y = oy, z = oz;
+
+      // RESPIRACIÓN: pecho en altura z 0.95→1.35, ancho x cerca de 0.2
+      const chestMask = smoothstep(0.9, 1.05, oz) * smoothstep(1.42, 1.3, oz) * smoothstep(0.34, 0.24, Math.abs(ox - 0.2));
+      const bs = 1 + breathe * chestMask;
+      x = 0.2 + (x - 0.2) * bs;
+      y = y * bs;
+
+      // CABEZA: rotar vértices con z > 1.4 alrededor del cuello (0.2, 0, 1.45)
+      const headMask = smoothstep(1.38, 1.48, oz);
+      if (headMask > 0.01) {
+        const px = ox - 0.2, py = oy, pz = oz - 1.45;
+        // Yaw alrededor del eje Z (vertical en espacio local)
+        let nx = px * cy - py * sy;
+        let ny = px * sy + py * cy;
+        // Pitch alrededor del eje X
+        let ny2 = ny * cp - pz * sp;
+        let nz = ny * sp + pz * cp;
+        x = ox + (nx + 0.2 - ox) * headMask;
+        y = oy + (ny2 - oy) * headMask;
+        z = oz + (nz + 1.45 - oz) * headMask;
+      }
+
+      // BRAZO DERECHO (wave): vértices x > 0.3 en altura z 0.85→1.45
+      const armR = smoothstep(0.28, 0.34, ox) * smoothstep(1.5, 1.42, oz) * smoothstep(0.8, 0.9, oz);
+      if (armR > 0.01 && rightArmRaise > 0) {
+        const shX = 0.3, shZ = 1.4;
+        const px = ox - shX, pz = oz - shZ;
+        const ang = rightArmRaise * 1.4;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const nx = px * ca - pz * sa;
+        const nz = px * sa + pz * ca;
+        x += (nx + shX - ox) * armR;
+        z += (nz + shZ - oz) * armR;
+      }
+
+      // DANCE: cadera z 0.7→1.1 se mece en x
+      if (danceSwing !== 0) {
+        const hip = smoothstep(0.65, 0.85, oz) * smoothstep(1.15, 1.0, oz);
+        x += danceSwing * hip * 0.5;
+      }
+
+      pos[i*3] = x;
+      pos[i*3+1] = y;
+      pos[i*3+2] = z;
+    }
+    m.pos.needsUpdate = true;
+    m.geo.computeVertexNormals();
+  }
+}
+
+function smoothstep(a, b, x) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+// ============ SISTEMA DE POSE (IK + agarre de huesos) ============
+// Convenciones de rig soportadas
+const RIGS = {
+  mixamo: {   // GLTFLoader elimina ":" — nombres sin colon
+    LeftArm:   { root:'mixamorigLeftArm',   mid:'mixamorigLeftForeArm',   end:'mixamorigLeftHand' },
+    RightArm:  { root:'mixamorigRightArm',  mid:'mixamorigRightForeArm',  end:'mixamorigRightHand' },
+    LeftLeg:   { root:'mixamorigLeftUpLeg', mid:'mixamorigLeftLeg',       end:'mixamorigLeftFoot' },
+    RightLeg:  { root:'mixamorigRightUpLeg',mid:'mixamorigRightLeg',      end:'mixamorigRightFoot' },
+    Head:      { root:'mixamorigNeck',      mid:null,                      end:'mixamorigHead' }
+  },
+  mixamo2: {   // mismo esquema Mixamo con prefijo mixamorig2 (FBX del usuario)
+    LeftArm:   { root:'mixamorig2LeftArm',   mid:'mixamorig2LeftForeArm',   end:'mixamorig2LeftHand' },
+    RightArm:  { root:'mixamorig2RightArm',  mid:'mixamorig2RightForeArm',  end:'mixamorig2RightHand' },
+    LeftLeg:   { root:'mixamorig2LeftUpLeg', mid:'mixamorig2LeftLeg',       end:'mixamorig2LeftFoot' },
+    RightLeg:  { root:'mixamorig2RightUpLeg',mid:'mixamorig2RightLeg',      end:'mixamorig2RightFoot' },
+    Head:      { root:'mixamorig2Neck',      mid:null,                       end:'mixamorig2Head' }
+  },
+  blender: {
+    LeftArm:   { root:'UpperArm.L',  mid:'LowerArm.L',  end:'Hand.L' },
+    RightArm:  { root:'UpperArm.R',  mid:'LowerArm.R',  end:'Hand.R' },
+    LeftLeg:   { root:'UpperLeg.L',  mid:'LowerLeg.L',  end:'Foot.L' },
+    RightLeg:  { root:'UpperLeg.R',  mid:'LowerLeg.R',  end:'Foot.R' },
+    Head:      { root:'Neck',        mid:null,          end:'Head' }
+  },
+  plain: {   // mismo esquema Mixamo pero sin prefijo (ej. avatares TalkingHead)
+    LeftArm:   { root:'LeftArm',   mid:'LeftForeArm',   end:'LeftHand' },
+    RightArm:  { root:'RightArm',  mid:'RightForeArm',  end:'RightHand' },
+    LeftLeg:   { root:'LeftUpLeg', mid:'LeftLeg',       end:'LeftFoot' },
+    RightLeg:  { root:'RightUpLeg',mid:'RightLeg',      end:'RightFoot' },
+    Head:      { root:'Neck',      mid:null,            end:'Head' }
+  }
+};
+function currentChains() {
+  const rt = CHARACTERS[state.charKey].rigType;
+  return rt && RIGS[rt] ? RIGS[rt] : null;
+}
+function poseBoneList() {
+  const chains = currentChains();
+  if (!chains) return [];
+  return Object.values(chains).map(c => c.end);
+}
+
+let poseHandles = [];      // esferas visibles en las articulaciones
+let boneMap = {};          // nombre → objeto Bone
+let skinnedRoot = null;    // nodo raíz que contiene los huesos
+const _tmpQ1 = new THREE.Quaternion(), _tmpQ2 = new THREE.Quaternion();
+const _tmpV1 = new THREE.Vector3(), _tmpV2 = new THREE.Vector3();
+const _tmpM1 = new THREE.Matrix4();
+const _up = new THREE.Vector3(0,1,0);
+
+function collectBones(root) {
+  boneMap = {};
+  skinnedRoot = null;
+  root.traverse(o => {
+    if (o.isBone || o.type === 'Bone') boneMap[o.name] = o;
+    if (o.isSkinnedMesh && !skinnedRoot) skinnedRoot = o;
+  });
+  // Fallback: buscar nombres de huesos conocidos en toda la jerarquía
+  if (Object.keys(boneMap).length === 0) {
+    const wanted = new Set();
+    const chains = currentChains();
+    if (chains) for (const c of Object.values(chains)) { wanted.add(c.root); if(c.mid) wanted.add(c.mid); wanted.add(c.end); }
+    root.traverse(o => { if (o.name && wanted.has(o.name)) boneMap[o.name] = o; });
+  }
+  // Normalizar: si el rig usa prefijo mixamorig*: pero el tipo es plain (o viceversa), crear alias
+  const aliases = {};
+  for (const name of Object.keys(boneMap)) {
+    const m = name.match(/^mixamorig(\d*)?(.*)$/);
+    if (m && m[2]) aliases[m[2]] = boneMap[name];
+    else aliases['mixamorig'+name] = boneMap[name];
+  }
+  Object.assign(boneMap, aliases);
+}
+
+function createPoseHandles() {
+  clearPoseHandles();
+  if (!holder || !CHARACTERS[state.charKey].rigged) return;
+  collectBones(holder);
+  const geo = new THREE.SphereGeometry(0.035, 16, 12);
+  for (const name of poseBoneList()) {
+    const bone = boneMap[name];
+    if (!bone) continue;
+    const mat = new THREE.MeshBasicMaterial({ color: 0x6bcbff, transparent:true, opacity:0.85, depthTest:false });
+    const h = new THREE.Mesh(geo, mat);
+    h.renderOrder = 999;
+    h.userData.boneName = name;
+    holder.add(h);
+    poseHandles.push(h);
+  }
+  if (poseHandles.length === 0) setStatus('⚠️ No se encontraron huesos en este personaje');
+}
+
+function clearPoseHandles() {
+  for (const h of poseHandles) h.parent?.remove(h);
+  poseHandles = [];
+}
+
+function updatePoseHandles() {
+  const v = new THREE.Vector3();
+  for (const h of poseHandles) {
+    const bone = boneMap[h.userData.boneName];
+    if (!bone) continue;
+    bone.getWorldPosition(v);
+    h.position.copy(holder.worldToLocal(v.clone()));
+  }
+}
+
+function chainForBone(boneName) {
+  const chains = currentChains();
+  if (!chains) return null;
+  for (const [key, c] of Object.entries(chains)) {
+    if (c.end === boneName) return { key, ...c };
+  }
+  return null;
+}
+
+// IK analítico de dos huesos (brazo/pierna). Devuelve {rootQuat, midQuat} en espacio local de cada hueso.
+function solveTwoBoneIK(rootBone, midBone, endBone, targetWorld, poleWorld) {
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  rootBone.getWorldPosition(a);
+  midBone.getWorldPosition(b);
+  endBone.getWorldPosition(c);
+
+  const L1 = a.distanceTo(b);
+  const L2 = b.distanceTo(c);
+  const t = targetWorld.clone();
+
+  // Longitudes restringidas
+  let d = a.distanceTo(t);
+  const maxD = (L1 + L2) * 0.999;
+  if (d > maxD) t.copy(a).add(t.clone().sub(a).multiplyScalar(maxD / d));
+  d = Math.max(0.001, a.distanceTo(t));
+
+  // Ángulo del codo/rodilla (ley de cosenos)
+  const cosMid = THREE.MathUtils.clamp((L1*L1 + L2*L2 - d*d) / (2*L1*L2), -1, 1);
+  const midAngle = Math.PI - Math.acos(cosMid);
+
+  // Dirección deseada del hueso raíz
+  const dirTarget = t.clone().sub(a).normalize();
+  const poleDir = poleWorld.clone().sub(a).normalize();
+  // Proyectar poleDir perpendicular a dirTarget
+  const perp = poleDir.clone().sub(dirTarget.clone().multiplyScalar(poleDir.dot(dirTarget))).normalize();
+  if (perp.lengthSq() < 0.001) perp.set(0,1,0);
+
+  // Construir marco: dirTarget = eje "adelante" del hueso raíz
+  // Queremos rotación de rootBone tal que su eje +Y (hacia mid) apunte a dirTarget... depende del rig.
+  // En Mixamo, el hueso apunta por su eje +Y (local) hacia el hijo.
+  const cosA1 = THREE.MathUtils.clamp((L1*L1 + d*d - L2*L2) / (2*L1*d), -1, 1);
+  const a1 = Math.acos(cosA1);
+  // Dirección del brazo superior = rotar dirTarget por a1 alrededor del eje normal al plano (dirTarget, perp)
+  const axis = new THREE.Vector3().crossVectors(dirTarget, perp).normalize();
+  const upperDir = dirTarget.clone().applyAxisAngle(axis, a1);
+
+  // Calcular quaternion mundo deseado para rootBone: alinear su +Y local con upperDir
+  const rootWorldQ = new THREE.Quaternion();
+  rootBone.getWorldQuaternion(rootWorldQ);
+  const up = new THREE.Vector3(0,1,0).applyQuaternion(rootWorldQ); // dirección actual del hueso
+  const deltaWorld = new THREE.Quaternion().setFromUnitVectors(up.normalize(), upperDir.normalize());
+  const desiredWorldQ = deltaWorld.clone().multiply(rootWorldQ);
+
+  // Convertir a espacio local del padre
+  const parentQ = new THREE.Quaternion();
+  rootBone.parent.getWorldQuaternion(parentQ);
+  const localQ = parentQ.clone().invert().multiply(desiredWorldQ);
+  rootBone.quaternion.copy(localQ);
+  rootBone.updateMatrixWorld(true);
+
+  // Codo/rodilla: flexionar midBone
+  // Eje de flexión = el eje del plano (axis) expresado en espacio local de midBone
+  const midParentQ = new THREE.Quaternion();
+  midBone.parent.getWorldQuaternion(midParentQ);
+  const axisLocal = axis.clone().applyQuaternion(midParentQ.clone().invert());
+  const bendQ = new THREE.Quaternion().setFromAxisAngle(axisLocal.normalize(), -midAngle);
+  // Guardar rotación original relativa y aplicar flexión incremental sobre la pose T
+  midBone.quaternion.copy(bendQ.multiply(midBone.quaternion));
+  midBone.updateMatrixWorld(true);
+}
+
+// ============ TOGGLE POSE MODE ============
+document.getElementById('btnPose').onclick = () => {
+  if (!CHARACTERS[state.charKey].rigged) {
+    setStatus('⚠️ El posing necesita un personaje articulado — cambia a Robbie o Alex en el Studio');
+    return;
+  }
+  state.poseMode = !state.poseMode;
+  const btn = document.getElementById('btnPose');
+  if (state.poseMode) {
+    btn.textContent = '🧍 Saliendo…';
+    btn.textContent = '✅ Posando';
+    state.mode = 'pose';
+    if (mixer) { mixer.stopAllAction(); currentAction = null; }
+    createPoseHandles();
+    setStatus('🧍 Modo Pose: apunta a una esfera azul y arrástrala');
+    speak('Modo pose activado. Agarra mis articulaciones y colócame como quieras.');
+  } else {
+    btn.textContent = '🧍 Pose';
+    state.mode = 'idle';
+    clearPoseHandles();
+    const i = animFor('idle'); if (i) playAnim(i);
+    setStatus('Modo pose desactivado');
+  }
+};
+
+// Agarre con el controlador (select = gatillo)
+const _grabRay = new THREE.Raycaster();
+controller.addEventListener('selectstart', () => {
+  if (!state.poseMode) return;
+  // Buscar el handle más cercano al rayo del controlador
+  _grabRay.setFromXRController?.(controller);
+  const origin = new THREE.Vector3(), dir = new THREE.Vector3(0,0,-1);
+  controller.getWorldPosition(origin);
+  dir.applyQuaternion(controller.getWorldQuaternion(new THREE.Quaternion()));
+
+  let best = null, bestDist = 0.12;
+  for (const h of poseHandles) {
+    const hp = h.getWorldPosition(new THREE.Vector3());
+    // distancia punto-línea
+    const toH = hp.clone().sub(origin);
+    const proj = toH.dot(dir);
+    if (proj < 0) continue;
+    const closest = origin.clone().addScaledVector(dir, proj);
+    const d = closest.distanceTo(hp);
+    if (d < bestDist) { bestDist = d; best = h; }
+  }
+  if (best) {
+    const chain = chainForBone(best.userData.boneName);
+    if (chain) {
+      state.grabbedChain = chain;
+      best.material.color.setHex(0x6bff9d);
+      setStatus('✊ Agarrando: ' + chain.key);
+    }
+  }
+});
+controller.addEventListener('selectend', () => {
+  if (state.grabbedChain) {
+    setStatus('Pose fijada ✓');
+    for (const h of poseHandles) h.material.color.setHex(0x6bcbff);
+  }
+  state.grabbedChain = null;
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Cargar personaje inicial
+setStatus('Cargando Valentina...');
+switchCharacter('valentina');
+</script>
+</body>
+</html>

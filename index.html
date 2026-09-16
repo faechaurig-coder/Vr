@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gatito AR - Meta Quest</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+  }
+  h1 { font-size: 2.2em; margin-bottom: 10px; }
+  h1 .emoji { font-size: 1.2em; }
+  .card {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    padding: 24px 28px;
+    max-width: 520px;
+    backdrop-filter: blur(8px);
+    margin-top: 20px;
+  }
+  .card h2 { color: #ffb347; font-size: 1.2em; margin-bottom: 12px; }
+  .card ol { text-align: left; padding-left: 22px; line-height: 1.9; color: #d8e0ee; }
+  .hint { margin-top: 18px; color: #8fa3c8; font-size: 0.85em; }
+  #ARButton {
+    position: fixed !important;
+    bottom: 30px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    padding: 16px 44px !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+    border-radius: 40px !important;
+    border: none !important;
+    background: linear-gradient(135deg, #ff8c42, #ff5e78) !important;
+    color: white !important;
+    cursor: pointer !important;
+    box-shadow: 0 6px 24px rgba(255,110,90,0.5) !important;
+  }
+</style>
+</head>
+<body>
+  <h1><span class="emoji">🐱</span> Gatito AR</h1>
+  <p>Tu gatito virtual en realidad aumentada</p>
+
+  <div class="card">
+    <h2>📋 Instrucciones</h2>
+    <ol>
+      <li>Pulsa el botón <b>"Entrar en AR"</b> abajo</li>
+      <li>Acepta los permisos que pida el navegador</li>
+      <li>Apunta con el controlador (o tu mano) al <b>suelo o una superficie</b></li>
+      <li>Toca / aprieta el gatillo donde quieras que aparezca el gatito</li>
+      <li>El gatito caminará por tu sala 🐾 — toca otro lugar para moverlo</li>
+    </ol>
+  </div>
+  <p class="hint">Requiere Meta Quest Browser con WebXR activado</p>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js",
+    "three/addons/webxr/ARButton.js": "./lib/webxr/ARButton.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+// ---------- Escena base ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8d7b68, 1.1);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+dir.position.set(2, 4, 2);
+scene.add(dir);
+
+// ---------- Botón AR ----------
+const arButton = ARButton.createButton(renderer, {
+  requiredFeatures: ['hit-test'],
+  optionalFeatures: ['plane-detection', 'dom-overlay'],
+  domOverlay: { root: document.body }
+});
+arButton.id = 'ARButton';
+arButton.textContent = '🐾 Entrar en AR';
+document.body.appendChild(arButton);
+
+// ---------- Retícula (punto de mira) ----------
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.07, 0.09, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.9 })
+);
+reticle.matrixAutoUpdate = false;
+reticle.visible = false;
+scene.add(reticle);
+
+// ---------- Construcción del gatito ----------
+function buildKitten() {
+  const cat = new THREE.Group();
+  const fur = new THREE.MeshStandardMaterial({ color: 0xff9d4d, roughness: 0.9 });
+  const furLight = new THREE.MeshStandardMaterial({ color: 0xffd9b3, roughness: 0.9 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.6 });
+  const pink = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.8 });
+
+  // Cuerpo
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.09, 24, 18), fur);
+  body.scale.set(1, 0.85, 1.35);
+  body.position.y = 0.115;
+  cat.add(body);
+
+  // Barriga clara
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.075, 20, 16), furLight);
+  belly.scale.set(0.85, 0.7, 1.1);
+  belly.position.set(0, 0.095, 0.015);
+  cat.add(belly);
+
+  // Cabeza
+  const head = new THREE.Group();
+  head.position.set(0, 0.21, 0.115);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.065, 24, 18), fur);
+  head.add(skull);
+
+  // Hocico
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), furLight);
+  muzzle.scale.set(1.3, 0.8, 1);
+  muzzle.position.set(0, -0.02, 0.05);
+  head.add(muzzle);
+
+  // Nariz
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.01, 3), pink);
+  nose.rotation.x = Math.PI / 2;
+  nose.rotation.z = Math.PI;
+  nose.position.set(0, -0.005, 0.085);
+  head.add(nose);
+
+  // Ojos
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.011, 12, 10), dark);
+    eye.position.set(0.026 * s, 0.015, 0.055);
+    head.add(eye);
+    const shine = new THREE.Mesh(
+      new THREE.SphereGeometry(0.0035, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    shine.position.set(0.029 * s, 0.019, 0.064);
+    head.add(shine);
+  }
+
+  // Orejas
+  const ears = [];
+  for (const s of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.045, 4), fur);
+    ear.position.set(0.038 * s, 0.06, 0);
+    ear.rotation.z = -0.25 * s;
+    ear.rotation.y = Math.PI / 4;
+    head.add(ear);
+    ears.push(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.026, 4), pink);
+    inner.position.set(0.038 * s, 0.056, 0.008);
+    inner.rotation.z = -0.25 * s;
+    inner.rotation.y = Math.PI / 4;
+    head.add(inner);
+  }
+  cat.add(head);
+
+  // Patas
+  const legs = [];
+  const legGeo = new THREE.CylinderGeometry(0.014, 0.016, 0.09, 10);
+  for (const [x, z] of [[-0.045, 0.075], [0.045, 0.075], [-0.045, -0.075], [0.045, -0.075]]) {
+    const leg = new THREE.Mesh(legGeo, fur);
+    leg.position.set(x, 0.045, z);
+    cat.add(leg);
+    legs.push(leg);
+  }
+
+  // Cola (segmentos curvados hacia arriba)
+  const tail = new THREE.Group();
+  tail.position.set(0, 0.13, -0.11);
+  let parent = tail;
+  const tailSegs = [];
+  for (let i = 0; i < 4; i++) {
+    const seg = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.012 - i * 0.0018, 0.014 - i * 0.0018, 0.045, 8), fur);
+    m.position.y = 0.022;
+    seg.add(m);
+    seg.position.y = i === 0 ? 0 : 0.042;
+    seg.rotation.x = i === 0 ? -0.6 : -0.25;
+    parent.add(seg);
+    parent = seg;
+    tailSegs.push(seg);
+  }
+  cat.add(tail);
+
+  // Rayas de atigrado (anillos en el cuerpo)
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xd97b2e, roughness: 0.9 });
+  for (let i = 0; i < 3; i++) {
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.006, 8, 24), stripeMat);
+    stripe.rotation.x = Math.PI / 2;
+    stripe.position.set(0, 0.115, -0.06 + i * 0.05);
+    stripe.scale.set(1, 1, 0.6);
+    cat.add(stripe);
+  }
+
+  cat.userData = { head, tail, tailSegs, legs, ears };
+  return cat;
+}
+
+const kitten = buildKitten();
+kitten.visible = false;
+scene.add(kitten);
+
+// Sombra circular bajo el gatito (ancla visual al suelo)
+const shadow = new THREE.Mesh(
+  new THREE.CircleGeometry(0.14, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 })
+);
+shadow.visible = false;
+scene.add(shadow);
+
+// ---------- Audio sintetizado (maullido / ronroneo) ----------
+let audioCtx = null;
+function meow() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(600, t);
+  osc.frequency.linearRampToValueAtTime(900, t + 0.12);
+  osc.frequency.linearRampToValueAtTime(400, t + 0.4);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.12, t + 0.08);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = 800;
+  filt.Q.value = 1.5;
+  osc.connect(filt).connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.5);
+}
+
+// ---------- WebXR: hit-test y colocación ----------
+let hitTestSource = null;
+let hitTestSourceRequested = false;
+const clock = new THREE.Clock();
+
+// Estado del gatito: comportamiento de paseo
+const catState = {
+  home: new THREE.Vector3(),
+  target: new THREE.Vector3(),
+  heading: 0,
+  mode: 'idle',       // idle | walk | sit
+  timer: 2,
+  popScale: 0,
+  meowTimer: 6 + Math.random() * 8
+};
+
+function placeKitten(mat) {
+  const pos = new THREE.Vector3().setFromMatrixPosition(mat);
+  kitten.position.copy(pos);
+  shadow.position.copy(pos).y += 0.002;
+  catState.home.copy(pos);
+  catState.target.copy(pos);
+  kitten.visible = true;
+  shadow.visible = true;
+  catState.popScale = 0;
+  catState.mode = 'idle';
+  catState.timer = 1.2;
+  meow();
+}
+
+const controller = renderer.xr.getController(0);
+controller.addEventListener('select', () => {
+  if (reticle.visible) {
+    placeKitten(reticle.matrix);
+  }
+});
+scene.add(controller);
+
+// ---------- Bucle principal ----------
+renderer.setAnimationLoop((timestamp, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (frame) {
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+
+    if (!hitTestSourceRequested) {
+      session.requestReferenceSpace('viewer').then((viewerSpace) => {
+        session.requestHitTestSource({ space: viewerSpace }).then((source) => {
+          hitTestSource = source;
+        });
+      });
+      session.addEventListener('end', () => {
+        hitTestSourceRequested = false;
+        hitTestSource = null;
+      });
+      hitTestSourceRequested = true;
+    }
+
+    if (hitTestSource) {
+      const hits = frame.getHitTestResults(hitTestSource);
+      if (hits.length > 0) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
+        // Pulso de la retícula
+        const pulse = 1 + 0.1 * Math.sin(t * 5);
+        reticle.matrix.elements[0] *= pulse;
+        reticle.matrix.elements[10] *= pulse;
+      } else {
+        reticle.visible = false;
+      }
+    }
+  }
+
+  // ---------- Animación y comportamiento del gatito ----------
+  if (kitten.visible) {
+    const ud = kitten.userData;
+
+    // Animación de aparición (pop)
+    if (catState.popScale < 1) {
+      catState.popScale = Math.min(1, catState.popScale + dt * 3);
+      const s = catState.popScale * (2 - catState.popScale); // ease-out
+      kitten.scale.setScalar(Math.max(0.01, s));
+    }
+
+    // Máquina de estados sencilla
+    catState.timer -= dt;
+    if (catState.mode === 'idle') {
+      if (catState.timer <= 0) {
+        // Elegir un destino cercano a su "hogar"
+        const a = Math.random() * Math.PI * 2;
+        const r = 0.3 + Math.random() * 0.7;
+        catState.target.set(
+          catState.home.x + Math.cos(a) * r,
+          catState.home.y,
+          catState.home.z + Math.sin(a) * r
+        );
+        catState.mode = 'walk';
+      }
+    } else if (catState.mode === 'walk') {
+      const toTarget = new THREE.Vector3().subVectors(catState.target, kitten.position);
+      toTarget.y = 0;
+      const dist = toTarget.length();
+      if (dist < 0.04) {
+        catState.mode = Math.random() < 0.3 ? 'sit' : 'idle';
+        catState.timer = catState.mode === 'sit' ? 4 + Math.random() * 3 : 1.5 + Math.random() * 3;
+      } else {
+        toTarget.normalize();
+        const desired = Math.atan2(toTarget.x, toTarget.z);
+        let diff = desired - catState.heading;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        catState.heading += THREE.MathUtils.clamp(diff, -3 * dt, 3 * dt);
+        kitten.rotation.y = catState.heading;
+        const speed = 0.18;
+        kitten.position.x += Math.sin(catState.heading) * speed * dt;
+        kitten.position.z += Math.cos(catState.heading) * speed * dt;
+      }
+    } else if (catState.mode === 'sit') {
+      if (catState.timer <= 0) {
+        catState.mode = 'idle';
+        catState.timer = 1;
+      }
+    }
+
+    // Poses y ciclos
+    const walking = catState.mode === 'walk';
+    const sitting = catState.mode === 'sit';
+    const legSwing = walking ? Math.sin(t * 12) * 0.6 : 0;
+    ud.legs[0].rotation.x = legSwing;
+    ud.legs[1].rotation.x = -legSwing;
+    ud.legs[2].rotation.x = -legSwing;
+    ud.legs[3].rotation.x = legSwing;
+
+    // Cuerpo: rebote al caminar / sentado
+    const bob = walking ? Math.abs(Math.sin(t * 12)) * 0.012 : Math.sin(t * 2) * 0.003;
+    const targetBodyY = sitting ? 0.09 : 0.115;
+    kitten.children[0].position.y += (targetBodyY + bob - kitten.children[0].position.y) * Math.min(1, dt * 8);
+    kitten.children[1].position.y += ((sitting ? 0.07 : 0.095) - kitten.children[1].position.y) * Math.min(1, dt * 8);
+
+    // Cabeza: mirada curiosa (leve oscilación)
+    ud.head.rotation.y = Math.sin(t * 0.7) * 0.25;
+    ud.head.rotation.x = Math.sin(t * 1.1) * 0.08 + (sitting ? -0.15 : 0);
+    ud.head.position.y += ((sitting ? 0.185 : 0.21) - ud.head.position.y) * Math.min(1, dt * 8);
+
+    // Orejas con pequeños tics
+    ud.ears[0].rotation.x = Math.sin(t * 3.1) * 0.06;
+    ud.ears[1].rotation.x = Math.sin(t * 2.7 + 1) * 0.06;
+
+    // Cola ondulante
+    ud.tailSegs.forEach((seg, i) => {
+      seg.rotation.z = Math.sin(t * 2.2 + i * 0.8) * (0.15 + i * 0.05);
+      seg.rotation.x = (i === 0 ? -0.6 : -0.25) + Math.sin(t * 1.6 + i) * 0.06;
+    });
+
+    // Sombra sigue al gatito
+    shadow.position.x = kitten.position.x;
+    shadow.position.z = kitten.position.z;
+
+    // Maullidos ocasionales
+    catState.meowTimer -= dt;
+    if (catState.meowTimer <= 0) {
+      meow();
+      catState.meowTimer = 10 + Math.random() * 15;
+    }
+  }
+
+  renderer.render(scene, camera);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

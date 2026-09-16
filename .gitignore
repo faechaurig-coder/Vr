@@ -1,0 +1,35 @@
+# Dependencias
+node_modules/
+
+# Secretos y configuración local
+config.js
+.env
+.env.*
+
+# Archivos temporales de desarrollo
+*.log
+debug_*.html
+test_*.html
+probe.html
+dbg_*.html
+
+# Modelos fuente pesados (se mantienen los optimizados)
+*.fbx
+*.fbm/
+mixamo_char.fbm/
+model1.glb
+model2.glb
+valentina_real.glb
+hvgirl.glb
+brunette.glb
+michelle.glb
+soldier.glb
+xbot.glb
+woman-rig.glb
+animated_woman.glb
+testing.glb
+kaykit_*.glb
+
+# Sistema
+.DS_Store
+Thumbs.db
