@@ -98,7 +98,8 @@
     </ol>
   </div>
 
-  <div id="status"></div>
+  <div id="versionBadge" style="position:fixed;right:12px;top:12px;z-index:25;background:rgba(4,25,34,.88);border:1px solid rgba(101,230,210,.5);color:#9ff5e7;padding:7px 10px;border-radius:12px;font:700 11px system-ui;letter-spacing:.08em">VR 2.6</div>
+<div id="status"></div>
   <div id="debugInfo" style="display:none;position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:10px;border-radius:6px;max-width:320px;max-height:50vh;overflow:auto;z-index:9999;"></div>
   <div id="hud">
     <button class="hbtn" id="btnMic">🎤 Hablar</button>
@@ -218,7 +219,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.5 — bone-attached hair + face life + micro behavior 2026-09-29
+// SPECTCLAR VR V2.6 — visible version + robust Quest menu return 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -1878,7 +1879,7 @@ scene.add(controller);
 scene.add(controller2);
 
 window.vrStatus=()=>({
-  version:'2.3', character:state.charKey, placed:state.placed, paused:state.paused,
+  version:'2.6', character:state.charKey, placed:state.placed, paused:state.paused,
   mode:state.mode, audioUnlocked:_audioUnlocked,
   runtime:holder?.userData?.runtime||null,
   capabilities:characterCapabilities(),
