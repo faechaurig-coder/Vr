@@ -218,7 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.3 — per-character capabilities + grounding + Quest controls 2026-09-29
+// SPECTCLAR VR V2.4 — natural motion + animation state + social proximity 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -990,12 +990,19 @@ function playAnim(name, fade=0.3) {
   if (!mixer || !actions[name]) return false;
   const next = actions[name];
   if (currentAction === next) return true;
-  next.reset().fadeIn(fade).play();
-  if (currentAction) currentAction.fadeOut(fade);
+  next.enabled=true; next.setEffectiveWeight(1); next.reset().fadeIn(fade).play();
+  if (currentAction && currentAction!==next) currentAction.fadeOut(fade);
   currentAction = next;
   return true;
 }
 
+function setMotion(logical, speed=1) {
+  const name=animFor(logical);
+  if(!name || !actions[name]) return false;
+  const a=actions[name];
+  a.timeScale = logical==='walk' ? THREE.MathUtils.clamp(speed/0.55,0.65,1.55) : 1;
+  return playAnim(name, logical==='idle'?0.28:0.18);
+}
 function animFor(logical) {
   const map = CHARACTERS[state.charKey].anims;
   return map ? map[logical] : null;
@@ -1707,6 +1714,11 @@ function updateKitten(dt, t, camPos) {
 }
 
 const carryOffset = new THREE.Vector3();
+let _turnVelocity=0;
+function smoothAngle(current,target,dt,rate=7){
+  let d=target-current; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2;
+  return current + d*(1-Math.exp(-rate*dt));
+}
 
 function applyPosture() {
   if (!holder) return;
@@ -1852,7 +1864,9 @@ window.vrStatus=()=>({
   version:'2.3', character:state.charKey, placed:state.placed, paused:state.paused,
   mode:state.mode, audioUnlocked:_audioUnlocked,
   runtime:holder?.userData?.runtime||null,
-  capabilities:characterCapabilities()
+  capabilities:characterCapabilities(),
+  action:currentAction?Object.keys(actions).find(k=>actions[k]===currentAction):null,
+  floorY:holder?.userData?.floorY ?? null
 });
 // ============ MAIN LOOP ============
 renderer.setAnimationLoop((ts, frame) => {
@@ -1954,6 +1968,14 @@ renderer.setAnimationLoop((ts, frame) => {
     const camPos = new THREE.Vector3();
     camera.getWorldPosition(camPos);
 
+    // Distancia social: el personaje reconoce cuando te acercas.
+    const socialDist=Math.hypot(camPos.x-holder.position.x,camPos.z-holder.position.z);
+    if(!state.paused && socialDist<0.55 && t-(state.lastProximity||0)>12){
+      state.lastProximity=t; state.lastInteraction=t;
+      setStatus('👋 ' + CHARACTERS[state.charKey].name + ' notó que te acercaste');
+      const idle=animFor('idle'); if(idle)setMotion('idle');
+    }
+
     // Mixer de animaciones (personajes riggeados)
     if (mixer && !state.paused && state.mode !== 'carry' && state.mode !== 'pose') mixer.update(dt);
 
@@ -2028,7 +2050,7 @@ renderer.setAnimationLoop((ts, frame) => {
         let diff = desired - state.lookYaw;
         while (diff > Math.PI) diff -= 2*Math.PI;
         while (diff < -Math.PI) diff += 2*Math.PI;
-        state.lookYaw += THREE.MathUtils.clamp(diff, -4*dt, 4*dt);
+        state.lookYaw = smoothAngle(state.lookYaw, desired, dt, 8);
         const speed = 0.55;
         holder.position.x += Math.sin(state.lookYaw)*speed*dt;
         holder.position.z += Math.cos(state.lookYaw)*speed*dt;
@@ -2043,7 +2065,7 @@ renderer.setAnimationLoop((ts, frame) => {
         let diff = desired - state.lookYaw;
         while (diff > Math.PI) diff -= 2*Math.PI;
         while (diff < -Math.PI) diff += 2*Math.PI;
-        state.lookYaw += THREE.MathUtils.clamp(diff, -1.2*dt, 1.2*dt);
+        state.lookYaw = smoothAngle(state.lookYaw, desired, dt, 2.8);
       }
       const idleName = animFor('idle');
       if (idleName && currentAction !== actions[idleName]) playAnim(idleName);
