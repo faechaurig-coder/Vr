@@ -218,7 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.1 — Quest controls/audio + character runtime 2026-09-29
+// SPECTCLAR VR V2.2 — Studio + social interactions + runtime 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -370,10 +370,11 @@ function addMenuBtn(text, action, x, y, bg) {
   xrMenu.add(title);
   [['Martha','char:martha'],['Medea','char:medea'],['Alba','char:alba'],['Dalia','char:dalia']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.32, '#5a245c'));
   [['Pausa','pause'],['Ven','come'],['Baila','dance'],['Quieta','idle']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
-  [['De pie','stand'],['Acostar','lie'],['Acomodar','reset'],['Girar','turn']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.12, '#1e3a32'));
-  [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.02, '#3a2848'));
-  addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.08, '#3a2848');
-  [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.18, '#2a2438'));
+  [['Saludar','greet'],['Hablar','talk'],['Mirarme','look'],['Explorar','explore']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.12, '#174a4c'));
+  [['De pie','stand'],['Acostar','lie'],['Acomodar','reset'],['Girar','turn']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.02, '#1e3a32'));
+  [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.08, '#3a2848'));
+  addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.18, '#3a2848');
+  [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.38, '#2a2438'));
   [['Pelo rubio','hair:#e8c07d'],['Pelo rojo','hair:#c41e3a'],['Cerrar','close'],['Salir AR','exit']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.28, '#2a2438'));
 })();
 
@@ -416,6 +417,20 @@ function runMenuAction(action) {
   }
   if (action === 'come') { comeToMe(); return; }
   if (action === 'dance') { doDance(); return; }
+  if (action === 'greet') { speak('Hola. Qué gusto verte.'); state.lastInteraction=clock.elapsedTime; return; }
+  if (action === 'talk') { unlockAudio().then(()=>startListening()); state.lastInteraction=clock.elapsedTime; return; }
+  if (action === 'look') {
+    const cp=new THREE.Vector3(); (renderer.xr.isPresenting?renderer.xr.getCamera():camera).getWorldPosition(cp);
+    state.lookYaw=Math.atan2(cp.x-holder.position.x, cp.z-holder.position.z);
+    state.mode='idle'; setStatus('👀 Te está mirando'); state.lastInteraction=clock.elapsedTime; return;
+  }
+  if (action === 'explore') {
+    if (!holder) return;
+    const a=Math.random()*Math.PI*2, d=0.7+Math.random()*0.8;
+    state.walkTarget.set(holder.position.x+Math.sin(a)*d, holder.position.y, holder.position.z+Math.cos(a)*d);
+    state.paused=false; if(mixer)mixer.timeScale=1; state.mode='walkTo';
+    const w=animFor('walk'); if(w)playAnim(w); setStatus('🚶 Explorando el espacio'); state.lastInteraction=clock.elapsedTime; return;
+  }
   if (action === 'idle') {
     state.paused = false;
     state.mode = 'idle';
