@@ -218,7 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.4 — natural motion + animation state + social proximity 2026-09-29
+// SPECTCLAR VR V2.5 — bone-attached hair + face life + micro behavior 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -361,7 +361,7 @@ function addMenuBtn(text, action, x, y, bg) {
 
 (function buildXRMenu() {
   const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.92, 0.96),
+    new THREE.PlaneGeometry(0.92, 1.12),
     new THREE.MeshBasicMaterial({ color: 0x071c24, transparent: true, opacity: 0.94 })
   );
   xrMenu.add(bg);
@@ -374,8 +374,9 @@ function addMenuBtn(text, action, x, y, bg) {
   [['De pie','stand'],['Acostar','lie'],['Acomodar','reset'],['Girar','turn']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.02, '#1e3a32'));
   [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.08, '#3a2848'));
   addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.18, '#3a2848');
-  [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.38, '#2a2438'));
-  [['50%','scale:0.5'],['75%','scale:0.75'],['100%','scale:1'],['150%','scale:1.5']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.38,'#173a4a'));
+  [['Corto','hairstyle:short'],['Largo','hairstyle:long'],['Moño','hairstyle:bun'],['Sin extra','hairstyle:none']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.28,'#24444a'));
+  [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.58, '#2a2438'));
+  [['50%','scale:0.5'],['75%','scale:0.75'],['100%','scale:1'],['150%','scale:1.5']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.48,'#173a4a'));
   [['Pelo rubio','hair:#e8c07d'],['Pelo rojo','hair:#c41e3a'],['Cerrar','close'],['Salir AR','exit']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.28, '#2a2438'));
 })();
 
@@ -490,6 +491,11 @@ function runMenuAction(action) {
     state.skinColor = parseInt(action.slice(5).replace('#', ''), 16);
     applyAppearance();
     return;
+  }
+  if(action.startsWith('hairstyle:')){
+    state.hairStyle=action.slice(10);
+    state.hairOn=state.hairStyle!=='none';
+    buildHair(); setStatus('💇 Estilo de cabello: '+state.hairStyle); return;
   }
   if (action.startsWith('scale:')) {
     if(holder) holder.scale.setScalar(parseFloat(action.slice(6)));
@@ -1008,6 +1014,17 @@ function animFor(logical) {
   return map ? map[logical] : null;
 }
 
+function updateFaceLife(t,dt){
+  if(!holder || state.paused) return;
+  const blink=Math.pow(Math.max(0,Math.sin(t*0.55+1.2)),28);
+  holder.traverse(o=>{
+    if(!o.morphTargetDictionary || !o.morphTargetInfluences) return;
+    for(const [n,i] of Object.entries(o.morphTargetDictionary)){
+      const k=n.toLowerCase();
+      if(k.includes('blink')||k.includes('eyesclosed')||k.includes('eyeclose')) o.morphTargetInfluences[i]=Math.max(o.morphTargetInfluences[i]||0,blink);
+    }
+  });
+}
 function characterCapabilities() {
   if (!holder) return {rig:false, animated:false, studio:false};
   const rt=holder.userData.runtime||{};
@@ -1967,6 +1984,13 @@ renderer.setAnimationLoop((ts, frame) => {
 
     const camPos = new THREE.Vector3();
     camera.getWorldPosition(camPos);
+
+    // Microconducta: pequeñas variaciones evitan el efecto maniquí sin quitar control.
+    if(!state.paused && state.mode==='idle' && t-(state.lastMicro||0)>8){
+      state.lastMicro=t;
+      state.lookYaw += (Math.random()-0.5)*0.12;
+    }
+    updateFaceLife(t,dt);
 
     // Distancia social: el personaje reconoce cuando te acercas.
     const socialDist=Math.hypot(camPos.x-holder.position.x,camPos.z-holder.position.z);
