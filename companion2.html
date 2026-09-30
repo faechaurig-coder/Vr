@@ -10,19 +10,19 @@
   h1, .subtitle, .card { position:relative; z-index:2; }
   body {
     font-family:'Segoe UI',system-ui,sans-serif;
-    background:linear-gradient(160deg,#0a0a1a 0%,#1a1a3e 50%,#2d1b4e 100%);
+    background:radial-gradient(circle at 20% 10%,#12344a 0%,#07151f 42%,#03090d 100%);
     color:#fff; min-height:100vh; display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center; padding:20px;
   }
-  h1 { font-size:2em; background:linear-gradient(90deg,#ff6b9d,#c44dff,#6bcbff);
+  h1 { font-size:2em; background:linear-gradient(90deg,#65e6d2,#7bb8ff,#d8f7ff);
     -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:6px; }
   .subtitle { color:#a8a8d8; margin-bottom:14px; }
   .card {
-    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12);
-    border-radius:20px; padding:20px 24px; max-width:560px; margin:10px 0;
+    background:rgba(8,30,40,0.72); border:1px solid rgba(101,230,210,0.24);
+    border-radius:28px; padding:24px 28px; max-width:620px; margin:12px 0; box-shadow:0 24px 70px rgba(0,0,0,.35);
     backdrop-filter:blur(12px);
   }
-  .card h2 { color:#ff9de2; font-size:1.1em; margin-bottom:10px; }
+  .card h2 { color:#65e6d2; font-size:1.1em; margin-bottom:10px; }
   .card ol { text-align:left; padding-left:22px; line-height:1.85; color:#d0d0ee; font-size:0.95em; }
   #status {
     position:fixed; top:14px; left:50%; transform:translateX(-50%);
@@ -34,7 +34,7 @@
     position:fixed !important; bottom:24px !important; left:50% !important;
     transform:translateX(-50%) !important; padding:16px 48px !important;
     font-size:18px !important; font-weight:bold !important; border-radius:40px !important;
-    border:none !important; background:linear-gradient(135deg,#ff6b9d,#c44dff) !important;
+    border:none !important; background:linear-gradient(135deg,#25bca8,#397fe8) !important;
     color:white !important; cursor:pointer !important; z-index:250 !important;
     box-shadow:0 6px 28px rgba(255,107,157,0.45) !important;
   }
@@ -46,8 +46,8 @@
   }
   .hbtn.active { border-color:#6bff9d; color:#6bff9d; }
   .hbtn {
-    background:rgba(20,20,40,0.85); border:1px solid rgba(255,157,226,0.5);
-    color:#ffb8e3; padding:12px 18px; border-radius:14px; cursor:pointer;
+    background:rgba(20,20,40,0.85); border:1px solid rgba(101,230,210,0.45);
+    color:#d7fffa; padding:12px 18px; border-radius:14px; cursor:pointer;
     font-size:15px; backdrop-filter:blur(8px); user-select:none;
   }
   .hbtn:active { background:rgba(255,107,157,0.35); }
@@ -103,6 +103,7 @@
   <div id="hud">
     <button class="hbtn" id="btnMic">🎤 Hablar</button>
     <button class="hbtn" id="btnCome">📣 Ven</button>
+    <button class="hbtn" id="btnPause">⏸️ Pausa</button>
     <button class="hbtn active" id="btnFerm">🍎 Olor</button>
     <button class="hbtn" id="btnGeo">🍄 Geosmina</button>
     <button class="hbtn" id="btnAntL">🔇 Antena L</button>
@@ -217,6 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
+// SPECTCLAR VR V2 — runtime estabilizado 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -367,7 +369,7 @@ function addMenuBtn(text, action, x, y, bg) {
   title.position.set(0, 0.42, 0.01);
   xrMenu.add(title);
   [['Martha','char:martha'],['Medea','char:medea'],['Alba','char:alba'],['Dalia','char:dalia']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.32, '#5a245c'));
-  [['Ven','come'],['Baila','dance'],['Quieta','idle'],['Pausa','pause']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
+  [['Pausa','pause'],['Ven','come'],['Baila','dance'],['Quieta','idle'],['Pausa','pause']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
   [['De pie','stand'],['Acostar','lie'],['Acomodar','reset'],['Girar','turn']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.12, '#1e3a32'));
   [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.02, '#3a2848'));
   addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.08, '#3a2848');
@@ -496,8 +498,40 @@ function pollXRMenuButton() {
     }
   }
 }
-document.getElementById('btnMic').onclick = (e) => { e.stopPropagation(); startListening(); };
+let _audioUnlocked = false;
+async function unlockAudio() {
+  if (_audioUnlocked) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      window.__sharedAudioCtx = window.__sharedAudioCtx || new Ctx();
+      if (window.__sharedAudioCtx.state === 'suspended') await window.__sharedAudioCtx.resume();
+    }
+    if ('speechSynthesis' in window) { speechSynthesis.cancel(); speechSynthesis.resume?.(); }
+    _audioUnlocked = true;
+    console.info('[Audio] unlocked', window.__sharedAudioCtx?.state || 'speech');
+  } catch(e) { console.warn('[Audio] unlock failed', e); }
+}
+document.addEventListener('pointerdown', unlockAudio, {once:true});
+renderer.xr.addEventListener('sessionstart', unlockAudio);
+document.getElementById('btnMic').onclick = async (e) => { e.stopPropagation(); await unlockAudio(); startListening(); };
 document.getElementById('btnCome').onclick = () => comeToMe();
+document.getElementById('btnPause').onclick = () => {
+  state.paused = !state.paused;
+  const b = document.getElementById('btnPause');
+  b.textContent = state.paused ? '▶️ Reanudar' : '⏸️ Pausa';
+  b.classList.toggle('active', state.paused);
+  if (state.paused) {
+    state.mode = 'paused';
+    if (mixer) mixer.timeScale = 0;
+    setStatus('⏸️ Personaje congelado — puedes moverlo, girarlo o editarlo');
+  } else {
+    state.mode = 'idle';
+    if (mixer) mixer.timeScale = 1;
+    const i = animFor('idle'); if (i) playAnim(i);
+    setStatus('▶️ Personaje reanudado');
+  }
+};
 document.getElementById('btnFerm').onclick = () => {
   state.dropChannel = 'ferm';
   document.getElementById('btnFerm').classList.add('active');
@@ -960,7 +994,10 @@ async function switchCharacter(key, keepPlace=false) {
     const idleName = animFor('idle');
     if (idleName) playAnim(idleName);
     if (wasVisible) shadowDisc.visible = true;
-    setStatus(res.cfg.name + ' lista ✓');
+    state.paused = false;
+    if (mixer) mixer.timeScale = 1;
+    const rt = holder.userData.runtime || {};
+    setStatus(res.cfg.name + ' lista ✓ · huesos ' + (rt.bones||0) + ' · animaciones ' + ((rt.clips||[]).length));
   } catch (e) {
     console.error(e);
     window.__lunaErr = String(e && e.stack || e);
