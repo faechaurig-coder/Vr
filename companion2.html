@@ -218,7 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.2 — Studio + social interactions + runtime 2026-09-29
+// SPECTCLAR VR V2.3 — per-character capabilities + grounding + Quest controls 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -375,6 +375,7 @@ function addMenuBtn(text, action, x, y, bg) {
   [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.08, '#3a2848'));
   addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.18, '#3a2848');
   [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.38, '#2a2438'));
+  [['50%','scale:0.5'],['75%','scale:0.75'],['100%','scale:1'],['150%','scale:1.5']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.38,'#173a4a'));
   [['Pelo rubio','hair:#e8c07d'],['Pelo rojo','hair:#c41e3a'],['Cerrar','close'],['Salir AR','exit']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.28, '#2a2438'));
 })();
 
@@ -488,6 +489,11 @@ function runMenuAction(action) {
     state.skinOn = true;
     state.skinColor = parseInt(action.slice(5).replace('#', ''), 16);
     applyAppearance();
+    return;
+  }
+  if (action.startsWith('scale:')) {
+    if(holder) holder.scale.setScalar(parseFloat(action.slice(6)));
+    setStatus('📐 Escala ' + Math.round(parseFloat(action.slice(6))*100) + '%');
     return;
   }
   if (action.startsWith('hair:')) {
@@ -995,6 +1001,16 @@ function animFor(logical) {
   return map ? map[logical] : null;
 }
 
+function characterCapabilities() {
+  if (!holder) return {rig:false, animated:false, studio:false};
+  const rt=holder.userData.runtime||{};
+  return {
+    rig:(rt.bones||0)>0 || CHARACTERS[state.charKey].rigged,
+    animated:(rt.clips||[]).length>0,
+    studio:true,
+    procedural:!CHARACTERS[state.charKey].rigged
+  };
+}
 async function switchCharacter(key, keepPlace=false) {
   if (DEBUG_MODE) window._dbgLog('switch→'+key);
   setStatus('Cargando ' + CHARACTERS[key].name + '...');
@@ -1020,10 +1036,10 @@ async function switchCharacter(key, keepPlace=false) {
     const idleName = animFor('idle');
     if (idleName) playAnim(idleName);
     if (wasVisible) shadowDisc.visible = true;
-    state.paused = false;
-    if (mixer) mixer.timeScale = 1;
+    if (mixer) mixer.timeScale = state.paused ? 0 : 1;
     const rt = holder.userData.runtime || {};
-    setStatus(res.cfg.name + ' lista ✓ · huesos ' + (rt.bones||0) + ' · animaciones ' + ((rt.clips||[]).length));
+    const caps=characterCapabilities();
+    setStatus(res.cfg.name + ' ✓ · ' + (caps.rig?'rig':'procedural') + ' · ' + ((rt.clips||[]).length) + ' animaciones');
   } catch (e) {
     console.error(e);
     window.__lunaErr = String(e && e.stack || e);
@@ -1832,6 +1848,12 @@ addLaser(controller2);
 scene.add(controller);
 scene.add(controller2);
 
+window.vrStatus=()=>({
+  version:'2.3', character:state.charKey, placed:state.placed, paused:state.paused,
+  mode:state.mode, audioUnlocked:_audioUnlocked,
+  runtime:holder?.userData?.runtime||null,
+  capabilities:characterCapabilities()
+});
 // ============ MAIN LOOP ============
 renderer.setAnimationLoop((ts, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
