@@ -218,7 +218,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2 — runtime estabilizado 2026-09-29
+// SPECTCLAR VR V2.1 — Quest controls/audio + character runtime 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -362,14 +362,14 @@ function addMenuBtn(text, action, x, y, bg) {
 (function buildXRMenu() {
   const bg = new THREE.Mesh(
     new THREE.PlaneGeometry(0.92, 0.96),
-    new THREE.MeshBasicMaterial({ color: 0x140818, transparent: true, opacity: 0.92 })
+    new THREE.MeshBasicMaterial({ color: 0x071c24, transparent: true, opacity: 0.94 })
   );
   xrMenu.add(bg);
-  const title = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.06), menuLabel('A/X menú  ·  agarre mueve', '#3a1848'));
+  const title = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.06), menuLabel('CENTRO DE CONTROL · A/X', '#0b5660'));
   title.position.set(0, 0.42, 0.01);
   xrMenu.add(title);
   [['Martha','char:martha'],['Medea','char:medea'],['Alba','char:alba'],['Dalia','char:dalia']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.32, '#5a245c'));
-  [['Pausa','pause'],['Ven','come'],['Baila','dance'],['Quieta','idle'],['Pausa','pause']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
+  [['Pausa','pause'],['Ven','come'],['Baila','dance'],['Quieta','idle']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
   [['De pie','stand'],['Acostar','lie'],['Acomodar','reset'],['Girar','turn']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.12, '#1e3a32'));
   [['Base','outfit:original'],['Vestido','outfit:dress'],['Casual','outfit:casual'],['Falda','outfit:skirt']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.02, '#3a2848'));
   addMenuBtn('Chamarra', 'outfit:jacket', 0, -0.08, '#3a2848');
@@ -483,7 +483,10 @@ function runMenuAction(action) {
   }
 }
 
-renderer.xr.addEventListener('sessionstart', () => { _menuSession = renderer.xr.getSession(); });
+renderer.xr.addEventListener('sessionstart', () => {
+  _menuSession = renderer.xr.getSession();
+  unlockAudio();
+});
 renderer.xr.addEventListener('sessionend', () => { _menuSession = null; xrMenu.visible = false; });
 
 function pollXRMenuButton() {
@@ -491,6 +494,7 @@ function pollXRMenuButton() {
   for (const src of _menuSession.inputSources) {
     const gp = src.gamepad;
     if (!gp || !gp.buttons) continue;
+    // Meta Quest: A/X suele mapear a botones 4/5 según perfil; se conserva fallback.
     const pressed = [4, 5].some((i) => gp.buttons[i] && gp.buttons[i].pressed);
     if (pressed && _menuCooldown <= 0) {
       toggleXRMenu();
@@ -507,7 +511,14 @@ async function unlockAudio() {
       window.__sharedAudioCtx = window.__sharedAudioCtx || new Ctx();
       if (window.__sharedAudioCtx.state === 'suspended') await window.__sharedAudioCtx.resume();
     }
-    if ('speechSynthesis' in window) { speechSynthesis.cancel(); speechSynthesis.resume?.(); }
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+      speechSynthesis.resume?.();
+      // Warm-up silencioso: Quest exige que el audio nazca de un gesto/sesión activa.
+      const warm = new SpeechSynthesisUtterance(' ');
+      warm.volume = 0.01; warm.rate = 1;
+      speechSynthesis.speak(warm);
+    }
     _audioUnlocked = true;
     console.info('[Audio] unlocked', window.__sharedAudioCtx?.state || 'speech');
   } catch(e) { console.warn('[Audio] unlock failed', e); }
@@ -1724,6 +1735,7 @@ function updateHandControl(dt) {
     state.mode = state.paused ? 'paused' : 'idle';
   }
   if (xrMenu.visible || state.mode === 'walkTo' || state.mode === 'dance') return;
+  // En pausa el joystick sigue siendo una herramienta de edición: giro + acercar/alejar.
   for (let i = 0; i < sources.length; i++) {
     const gp = sources[i] && sources[i].gamepad;
     if (!gp || !gp.axes || gp.axes.length < 2) continue;
