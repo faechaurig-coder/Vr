@@ -98,7 +98,7 @@
     </ol>
   </div>
 
-  <div id="versionBadge" style="position:fixed;right:12px;top:12px;z-index:25;background:rgba(4,25,34,.88);border:1px solid rgba(101,230,210,.5);color:#9ff5e7;padding:7px 10px;border-radius:12px;font:700 11px system-ui;letter-spacing:.08em">VR 2.6</div>
+  <div id="versionBadge" style="position:fixed;right:12px;top:12px;z-index:25;background:rgba(4,25,34,.88);border:1px solid rgba(101,230,210,.5);color:#9ff5e7;padding:7px 10px;border-radius:12px;font:700 11px system-ui;letter-spacing:.08em">VR 2.7</div>
 <div id="status"></div>
   <div id="debugInfo" style="display:none;position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:10px;border-radius:6px;max-width:320px;max-height:50vh;overflow:auto;z-index:9999;"></div>
   <div id="hud">
@@ -219,7 +219,7 @@ import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/loaders/DRACOLoader.js';
 import { createFlyRoom } from './lib/fly-brain.js';
 
-// SPECTCLAR VR V2.6 — visible version + robust Quest menu return 2026-09-29
+// SPECTCLAR VR V2.7 — visible version + robust Quest menu return 2026-09-29
 // ============ CONFIG ============
 // La API key NO se guarda en el código. Se lee de config.js (ignorado por git).
 const GEMINI_KEY = (window.APP_CONFIG && window.APP_CONFIG.geminiKey) || '';
@@ -362,12 +362,12 @@ function addMenuBtn(text, action, x, y, bg) {
 
 (function buildXRMenu() {
   const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.92, 1.12),
+    new THREE.PlaneGeometry(0.92, 1.34),
     new THREE.MeshBasicMaterial({ color: 0x071c24, transparent: true, opacity: 0.94 })
   );
   xrMenu.add(bg);
-  const title = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.06), menuLabel('CENTRO DE CONTROL · A/X', '#0b5660'));
-  title.position.set(0, 0.42, 0.01);
+  const title = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.06), menuLabel('CENTRO DE CONTROL · B/Y · JOYSTICK', '#0b5660'));
+  title.position.set(0, 0.52, 0.01);
   xrMenu.add(title);
   [['Martha','char:martha'],['Medea','char:medea'],['Alba','char:alba'],['Dalia','char:dalia']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.32, '#5a245c'));
   [['Pausa','pause'],['Ven','come'],['Baila','dance'],['Quieta','idle']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, 0.22, '#24385a'));
@@ -378,7 +378,7 @@ function addMenuBtn(text, action, x, y, bg) {
   [['Corto','hairstyle:short'],['Largo','hairstyle:long'],['Moño','hairstyle:bun'],['Sin extra','hairstyle:none']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.28,'#24444a'));
   [['Piel clara','skin:#ffdbac'],['Piel media','skin:#c68642'],['Piel oscura','skin:#5c3a1e'],['Pelo negro','hair:#1a1a1a']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.58, '#2a2438'));
   [['50%','scale:0.5'],['75%','scale:0.75'],['100%','scale:1'],['150%','scale:1.5']].forEach((c,i)=>addMenuBtn(c[0],c[1],-0.32+i*0.21,-0.48,'#173a4a'));
-  [['Pelo rubio','hair:#e8c07d'],['Pelo rojo','hair:#c41e3a'],['Cerrar','close'],['Salir AR','exit']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.28, '#2a2438'));
+  [['Pelo rubio','hair:#e8c07d'],['Pelo rojo','hair:#c41e3a'],['Cerrar','close'],['Salir AR','exit']].forEach((c, i) => addMenuBtn(c[0], c[1], -0.32 + i * 0.21, -0.68, '#2a2438'));
 })();
 
 function toggleXRMenu(force) {
@@ -1879,7 +1879,7 @@ scene.add(controller);
 scene.add(controller2);
 
 window.vrStatus=()=>({
-  version:'2.6', character:state.charKey, placed:state.placed, paused:state.paused,
+  version:'2.7', character:state.charKey, placed:state.placed, paused:state.paused,
   mode:state.mode, audioUnlocked:_audioUnlocked,
   runtime:holder?.userData?.runtime||null,
   capabilities:characterCapabilities(),
@@ -1922,7 +1922,7 @@ renderer.setAnimationLoop((ts, frame) => {
       if (hits.length) {
         reticle.visible = true;
         reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
-        if (!state.placed && holder) place(reticle.matrix);
+        // V2.7: nunca colocar automáticamente; el usuario confirma con gatillo.
       } else reticle.visible = false;
     }
     // ===== LIGHT ESTIMATION: luz de la habitación real =====
